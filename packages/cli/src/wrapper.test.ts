@@ -11,6 +11,7 @@ const createHubClient = () => {
   const events: unknown[] = [];
   const completes: unknown[] = [];
   const failures: unknown[] = [];
+  const cancellations: unknown[] = [];
   const plannerOutputs: unknown[] = [];
   const hubClient: HubClient = {
     registerRunStart: (start) => {
@@ -26,12 +27,23 @@ const createHubClient = () => {
     recordRunFailed: (failed) => {
       failures.push(failed);
     },
+    recordRunCanceled: (canceled) => {
+      cancellations.push(canceled);
+    },
     recordPlannerOutput: (runId, stdout) => {
       plannerOutputs.push({ runId, stdout });
     },
   };
 
-  return { completes, events, failures, hubClient, plannerOutputs, starts };
+  return {
+    cancellations,
+    completes,
+    events,
+    failures,
+    hubClient,
+    plannerOutputs,
+    starts,
+  };
 };
 
 describe("wrapper", () => {
@@ -181,6 +193,25 @@ describe("wrapper", () => {
     );
 
     expect(failures).toEqual([{ runId: "run-1", error }]);
+  });
+
+  it("marks a registered Run canceled when its Watchtower AbortController fires", async () => {
+    const { cancellations, failures, hubClient, starts } = createHubClient();
+    const error = new DOMException("Aborted", "AbortError");
+    const realModule = {
+      run: async (_options: SandcastleRunOptions) => {
+        starts[0]?.abortController.abort("Dashboard cancel");
+        throw error;
+      },
+    };
+    const wrapped = wrapSandcastleModule(realModule, { hubClient });
+
+    await expect(wrapped.run({ agent: "fake", name: "worker" })).rejects.toBe(
+      error,
+    );
+
+    expect(cancellations).toEqual([{ runId: "run-1", reason: error }]);
+    expect(failures).toEqual([]);
   });
 
   it("wraps sandbox.run returned by createSandbox", async () => {

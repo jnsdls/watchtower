@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import packageJson from "../../../package.json" with { type: "json" };
 import type {
   HubClient,
+  RunCanceled,
   RunComplete,
   RunFailed,
   RunStart,
@@ -134,12 +135,13 @@ export const completeWatchtowerJob = async (
   hubUrl: string,
   jobId: string,
   exitCode: number,
+  status?: string,
 ) => {
   await postTelemetryEvents(hubUrl, [
     {
       type: "job.completed",
       jobId,
-      status: exitCode === 0 ? "succeeded" : "failed",
+      status: status ?? (exitCode === 0 ? "succeeded" : "failed"),
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -254,6 +256,9 @@ const normalizeCommits = (result: SandcastleRunResult) =>
 const formatErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException && error.name === "AbortError";
+
 export const createWatchtowerHubClient = ({
   batchWindowMs = 100,
   fetch: fetchImplementation = fetch,
@@ -263,6 +268,7 @@ export const createWatchtowerHubClient = ({
 }: WatchtowerHubClientOptions): HubClient & { flush: () => Promise<void> } => {
   let queue: TelemetryEvent[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancelPolls = new Map<string, AbortController>();
 
   const post = async (events: readonly TelemetryEvent[]) => {
     for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
@@ -306,6 +312,53 @@ export const createWatchtowerHubClient = ({
     }
   };
 
+  const stopCancelPoll = (runId: string) => {
+    const poll = cancelPolls.get(runId);
+    cancelPolls.delete(runId);
+    poll?.abort();
+  };
+
+  const watchRunCancel = async (
+    runId: string,
+    abortController: AbortController,
+  ) => {
+    stopCancelPoll(runId);
+
+    const pollController = new AbortController();
+    cancelPolls.set(runId, pollController);
+
+    const poll = async () => {
+      while (
+        !abortController.signal.aborted &&
+        !pollController.signal.aborted
+      ) {
+        try {
+          const response = await fetchImplementation(
+            new URL(`/api/runs/${runId}/cancel`, hubUrl),
+            { method: "GET", signal: pollController.signal },
+          );
+
+          if (response.status === 204) {
+            continue;
+          }
+
+          if (response.ok) {
+            abortController.abort("Dashboard cancel requested");
+            return;
+          }
+        } catch (error) {
+          if (isAbortError(error)) {
+            return;
+          }
+        }
+
+        await sleep(250);
+      }
+    };
+
+    void poll();
+  };
+
   return {
     flush,
     registerRunStart: async (start) => {
@@ -339,6 +392,7 @@ export const createWatchtowerHubClient = ({
       ]);
     },
     recordRunComplete: async (complete: RunComplete) => {
+      stopCancelPoll(complete.runId);
       await flush();
       await post([
         {
@@ -353,7 +407,25 @@ export const createWatchtowerHubClient = ({
         },
       ]);
     },
+    recordRunCanceled: async (canceled: RunCanceled) => {
+      stopCancelPoll(canceled.runId);
+      await flush();
+      await post([
+        {
+          type: "run.completed",
+          runId: canceled.runId,
+          status: "canceled",
+          branch: null,
+          completionSignal: null,
+          commits: [],
+          errorMessage: null,
+          iterations: [],
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    },
     recordRunFailed: async (failed: RunFailed) => {
+      stopCancelPoll(failed.runId);
       await flush();
       await post([
         {
@@ -372,5 +444,6 @@ export const createWatchtowerHubClient = ({
     recordRunEvent: (runId, event) => {
       enqueue({ runId, ...normalizeStreamEvent(event) });
     },
+    watchRunCancel,
   };
 };

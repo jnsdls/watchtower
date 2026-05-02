@@ -59,6 +59,7 @@ CREATE TABLE "runs" (
 	"started_at" timestamp with time zone NOT NULL,
 	"ended_at" timestamp with time zone,
 	"status" text NOT NULL,
+	"cancel_requested" boolean DEFAULT false NOT NULL,
 	"completion_signal" text,
 	"config_snapshot" jsonb NOT NULL,
 	"error_message" text

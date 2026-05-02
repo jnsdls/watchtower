@@ -13,6 +13,7 @@ import {
 import { completeWatchtowerJob, startWatchtowerJob } from "./hub-client.ts";
 import { createWrappedSandcastleModuleSource } from "./loader-module-source.ts";
 import { identifyProject } from "./project-id.ts";
+import { installSigintHandler } from "./signals.ts";
 
 export type RuntimeName = "bun" | "node";
 
@@ -252,10 +253,18 @@ export const runWithLoader = async (
     WATCHTOWER_MAIN_URL: pathToFileURL(absoluteMainPath).href,
   };
 
+  let wasCanceledBySignal = false;
   const completeJob = async (exitCode: number) => {
+    const status = wasCanceledBySignal ? "canceled" : undefined;
+
     if (telemetryJobId !== "") {
       try {
-        await completeWatchtowerJob(hubConfig.url, telemetryJobId, exitCode);
+        await completeWatchtowerJob(
+          hubConfig.url,
+          telemetryJobId,
+          exitCode,
+          status,
+        );
       } catch {
         // Telemetry failures must not change the user's Runner exit code.
       }
@@ -263,38 +272,47 @@ export const runWithLoader = async (
 
     return exitCode;
   };
+  const uninstallSigintHandler = installSigintHandler({
+    onFirstSignal: () => {
+      wasCanceledBySignal = true;
+    },
+  });
 
-  if (runtime === "bun") {
-    const bunEntry = await createBunTransformedEntry(absoluteMainPath, env);
+  try {
+    if (runtime === "bun") {
+      const bunEntry = await createBunTransformedEntry(absoluteMainPath, env);
 
-    try {
-      return await completeJob(
-        await runChild(
-          "bun",
-          ["--preload", fileURLToPath(bunRegisterUrl), bunEntry.entryPath],
-          { cwd, stderr, stdout },
-          env,
-        ),
-      );
-    } finally {
-      await Promise.all([
-        rm(bunEntry.entryPath, { force: true }),
-        rm(bunEntry.wrapperPath, { force: true }),
-      ]);
+      try {
+        return await completeJob(
+          await runChild(
+            "bun",
+            ["--preload", fileURLToPath(bunRegisterUrl), bunEntry.entryPath],
+            { cwd, stderr, stdout },
+            env,
+          ),
+        );
+      } finally {
+        await Promise.all([
+          rm(bunEntry.entryPath, { force: true }),
+          rm(bunEntry.wrapperPath, { force: true }),
+        ]);
+      }
     }
-  }
 
-  return completeJob(
-    await runChild(
-      "node",
-      [
-        "--experimental-strip-types",
-        "--import",
-        nodeRegisterUrl.href,
-        fileURLToPath(runnerEntryUrl),
-      ],
-      { cwd, stderr, stdout },
-      env,
-    ),
-  );
+    return completeJob(
+      await runChild(
+        "node",
+        [
+          "--experimental-strip-types",
+          "--import",
+          nodeRegisterUrl.href,
+          fileURLToPath(runnerEntryUrl),
+        ],
+        { cwd, stderr, stdout },
+        env,
+      ),
+    );
+  } finally {
+    uninstallSigintHandler();
+  }
 };
