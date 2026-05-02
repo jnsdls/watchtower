@@ -104,7 +104,12 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // The plan JSON contains an array of issues, each with id, title, branch.
   // (Wire format follows sandcastle's convention; watchtower's domain calls
   // these Tasks once they enter a Job — see CONTEXT.md.)
-  const { issues } = JSON.parse(planMatch[1]!) as {
+  const planJson = planMatch.at(1);
+  if (!planJson) {
+    throw new Error("Planning agent produced an empty <plan> tag.");
+  }
+
+  const { issues } = JSON.parse(planJson) as {
     issues: { id: string; title: string; branch: string }[];
   };
 
@@ -184,22 +189,31 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // Log any agents that threw (network error, sandbox crash, etc.).
   for (const [i, outcome] of settled.entries()) {
     if (outcome.status === "rejected") {
+      const issue = issues[i];
+      if (!issue) {
+        continue;
+      }
+
       console.error(
-        `  ✗ ${issues[i]!.id} (${issues[i]!.branch}) failed: ${outcome.reason}`,
+        `  ✗ ${issue.id} (${issue.branch}) failed: ${outcome.reason}`,
       );
     }
   }
 
   // Only pass branches that actually produced commits to the merge phase.
   // An agent that ran successfully but made no commits has nothing to merge.
-  const completedIssues = settled
-    .map((outcome, i) => ({ outcome, issue: issues[i]! }))
-    .filter(
-      (entry) =>
-        entry.outcome.status === "fulfilled" &&
-        entry.outcome.value.commits.length > 0,
-    )
-    .map((entry) => entry.issue);
+  const completedIssues = settled.flatMap((outcome, i) => {
+    const issue = issues[i];
+    if (
+      !issue ||
+      outcome.status !== "fulfilled" ||
+      outcome.value.commits.length === 0
+    ) {
+      return [];
+    }
+
+    return [issue];
+  });
 
   const completedBranches = completedIssues.map((i) => i.branch);
 
