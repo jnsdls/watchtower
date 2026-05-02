@@ -41,4 +41,16 @@ describe("workspace scaffold", () => {
       ).toBe(true);
     }
   });
+
+  it("exposes the watchtower CLI binary", () => {
+    const cliPackage = readJson("packages/cli/package.json");
+
+    expect(cliPackage).toMatchObject({
+      bin: {
+        watchtower: "./src/bin.ts",
+      },
+    });
+
+    expect(existsSync(join(root, "packages/cli/src/bin.ts"))).toBe(true);
+  });
 });
