@@ -195,6 +195,29 @@ const runChild = (
     });
   });
 
+const formatErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
+const startTelemetryJobOrLog = async (
+  hubConfig: HubConfig,
+  cwd: string,
+  stdin: NodeJS.ReadableStream,
+  stderr: NodeJS.WritableStream,
+) => {
+  try {
+    await ensureHubReachableForRun(hubConfig, stdin, stderr);
+    return await startWatchtowerJob({
+      hubUrl: hubConfig.url,
+      project: await identifyProject(cwd),
+    });
+  } catch (error) {
+    stderr.write(
+      `Watchtower telemetry disabled: ${formatErrorMessage(error)}\n`,
+    );
+    return "";
+  }
+};
+
 export const runWithLoader = async (
   mainPath: string,
   options: RunnerOptions = {},
@@ -205,44 +228,27 @@ export const runWithLoader = async (
   const stderr = options.stderr ?? process.stderr;
   const stdin = options.stdin ?? process.stdin;
   const absoluteMainPath = resolve(cwd, mainPath);
-  const baseEnv = {
-    ...(options.env ?? process.env),
-  };
+  const baseEnv = options.env ?? process.env;
+
   if (baseEnv.WATCHTOWER_SKIP_SANDCASTLE_VERSION_CHECK !== "1") {
     try {
       await assertSupportedSandcastleVersion(baseEnv);
     } catch (error) {
-      stderr.write(
-        `${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      stderr.write(`${formatErrorMessage(error)}\n`);
       return 1;
     }
   }
+
   const hubConfig = resolveHubConfig({ url: options.hubUrl }, baseEnv);
-  const telemetryDisabled = baseEnv.WATCHTOWER_TELEMETRY_DISABLED === "1";
-  let telemetryJobId = "";
+  const telemetryJobId =
+    baseEnv.WATCHTOWER_TELEMETRY_DISABLED === "1"
+      ? ""
+      : await startTelemetryJobOrLog(hubConfig, cwd, stdin, stderr);
+
   const env = {
     ...baseEnv,
     WATCHTOWER_HUB_URL: hubConfig.url,
-    WATCHTOWER_JOB_ID: telemetryDisabled
-      ? ""
-      : await (async () => {
-          try {
-            await ensureHubReachableForRun(hubConfig, stdin, stderr);
-            telemetryJobId = await startWatchtowerJob({
-              hubUrl: hubConfig.url,
-              project: await identifyProject(cwd),
-            });
-            return telemetryJobId;
-          } catch (error) {
-            stderr.write(
-              `Watchtower telemetry disabled: ${
-                error instanceof Error ? error.message : String(error)
-              }\n`,
-            );
-            return "";
-          }
-        })(),
+    WATCHTOWER_JOB_ID: telemetryJobId,
     WATCHTOWER_MAIN_URL: pathToFileURL(absoluteMainPath).href,
   };
 

@@ -245,7 +245,7 @@ const normalizeCommits = (result: SandcastleRunResult) =>
     .map((commit) => ({ sha: getString(commit, "sha") }))
     .filter((commit): commit is { sha: string } => commit.sha !== null);
 
-const errorMessage = (error: unknown) =>
+const formatErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
 export const createWatchtowerHubClient = ({
@@ -348,7 +348,7 @@ export const createWatchtowerHubClient = ({
           branch: null,
           completionSignal: null,
           commits: [],
-          errorMessage: errorMessage(failed.error),
+          errorMessage: formatErrorMessage(failed.error),
           iterations: [],
           timestamp: new Date().toISOString(),
         },
