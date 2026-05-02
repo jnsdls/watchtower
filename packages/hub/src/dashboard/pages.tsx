@@ -11,6 +11,7 @@ import type {
   listProjectsByRecentActivity,
   listRunsForJob,
 } from "../db/queries";
+import { CancelRunButton } from "./cancel-run-button";
 import { formatDateTime, formatDuration, formatTokens } from "./format";
 import { LiveUpdates } from "./live-updates";
 
@@ -443,9 +444,11 @@ export function RunDetailPage({
   iterations: IterationListItem[];
   events: EventListItem[];
 }) {
+  const canCancel = run.status === "running";
+
   return (
     <PageShell eyebrow="Run" title={run.name}>
-      <div className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 text-sm md:grid-cols-4">
+      <div className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 text-sm md:grid-cols-5">
         <div>
           <div className="text-slate-500">Status</div>
           <Status value={run.status} />
@@ -466,6 +469,9 @@ export function RunDetailPage({
           <div className="text-slate-950">
             {formatDuration(run.startedAt, run.endedAt)}
           </div>
+        </div>
+        <div className="flex items-end md:justify-end">
+          {canCancel ? <CancelRunButton runId={run.id} /> : null}
         </div>
       </div>
       <TokenPanel iterations={iterations} />

@@ -89,4 +89,32 @@ describe("hub-client", () => {
 
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it("long-polls Run cancellation and aborts the registered controller", async () => {
+    const cancelFetch = vi.fn(async (url: URL, init?: RequestInit) => {
+      expect(url.pathname).toBe(
+        "/api/runs/00000000-0000-4000-8000-000000000002/cancel",
+      );
+      expect(init?.method).toBe("GET");
+      return new Response(JSON.stringify({ cancelRequested: true }), {
+        status: 200,
+      });
+    });
+    const client = createWatchtowerHubClient({
+      fetch: cancelFetch,
+      hubUrl: "http://127.0.0.1:7777",
+      jobId: "00000000-0000-4000-8000-000000000001",
+      retryDelaysMs: [],
+    });
+    const controller = new AbortController();
+
+    await client.watchRunCancel?.(
+      "00000000-0000-4000-8000-000000000002",
+      controller,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(controller.signal.reason).toBe("Dashboard cancel requested");
+  });
 });

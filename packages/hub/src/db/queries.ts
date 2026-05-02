@@ -261,6 +261,44 @@ export const updateRunTelemetryComplete = async (
   return requireRow(run, "Run");
 };
 
+export const requestRunCancel = async (
+  db: HubQueryDatabase,
+  input: { id: string; requestedAt: Date },
+) => {
+  const currentRun = await getRun(db, input.id);
+
+  if (!currentRun) {
+    return { status: "missing" as const, run: null, event: null };
+  }
+
+  if (currentRun.status !== "running") {
+    return { status: "noop" as const, run: currentRun, event: null };
+  }
+
+  const [run] = await db
+    .update(runs)
+    .set({
+      cancelRequested: true,
+      endedAt: input.requestedAt,
+      status: "canceled",
+    })
+    .where(eq(runs.id, input.id))
+    .returning();
+
+  const event = await createEvent(db, {
+    runId: input.id,
+    type: "status",
+    payload: { status: "canceled", cancelRequested: true },
+    timestamp: input.requestedAt,
+  });
+
+  return {
+    status: "requested" as const,
+    run: requireRow(run, "Run"),
+    event,
+  };
+};
+
 export const listRuns = async (db: HubQueryDatabase) =>
   db.select().from(runs).orderBy(desc(runs.startedAt));
 

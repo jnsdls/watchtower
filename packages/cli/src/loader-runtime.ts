@@ -1,6 +1,13 @@
 import { createConfigSnapshot } from "./config-snapshotter.ts";
 import { createWatchtowerHubClient } from "./hub-client.ts";
-import { type SandcastleModule, wrapSandcastleModule } from "./wrapper.ts";
+import { installSigintHandler } from "./signals.ts";
+import {
+  abortActiveRuns,
+  type SandcastleModule,
+  wrapSandcastleModule,
+} from "./wrapper.ts";
+
+installSigintHandler({ abortActiveRuns });
 
 export const createLoaderHubClient = () => {
   if (!process.env.WATCHTOWER_JOB_ID || !process.env.WATCHTOWER_HUB_URL) {

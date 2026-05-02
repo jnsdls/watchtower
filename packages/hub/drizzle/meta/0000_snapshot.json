@@ -468,6 +468,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "cancel_requested": {
+          "name": "cancel_requested",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "completion_signal": {
           "name": "completion_signal",
           "type": "text",

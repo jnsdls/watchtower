@@ -1,5 +1,6 @@
 import {
   bigserial,
+  boolean,
   integer,
   jsonb,
   pgTable,
@@ -76,6 +77,7 @@ export const runs = pgTable("runs", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
   status: text("status").notNull(),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
   completionSignal: text("completion_signal"),
   configSnapshot: jsonb("config_snapshot").notNull(),
   errorMessage: text("error_message"),

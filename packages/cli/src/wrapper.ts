@@ -58,6 +58,11 @@ export type RunFailed = {
   readonly error: unknown;
 };
 
+export type RunCanceled = {
+  readonly runId: string;
+  readonly reason: unknown;
+};
+
 export type HubClient = {
   readonly registerRunStart: (start: RunStart) => string | Promise<string>;
   readonly recordRunEvent: (
@@ -66,6 +71,11 @@ export type HubClient = {
   ) => void | Promise<void>;
   readonly recordRunComplete: (complete: RunComplete) => void | Promise<void>;
   readonly recordRunFailed?: (failed: RunFailed) => void | Promise<void>;
+  readonly recordRunCanceled?: (canceled: RunCanceled) => void | Promise<void>;
+  readonly watchRunCancel?: (
+    runId: string,
+    abortController: AbortController,
+  ) => void | Promise<void>;
   readonly recordPlannerOutput: (
     runId: string,
     stdout: string,
@@ -76,6 +86,14 @@ export type WrapSandcastleOptions = {
   readonly hubClient: HubClient;
   readonly logCall?: (call: WrappedCall) => void;
   readonly snapshotConfig?: (options: object) => unknown | Promise<unknown>;
+};
+
+const activeRunAbortControllers = new Set<AbortController>();
+
+export const abortActiveRuns = (reason: string) => {
+  for (const abortController of activeRunAbortControllers) {
+    abortController.abort(reason);
+  }
 };
 
 const cloneJsonSafe = (value: unknown): unknown => {
@@ -153,6 +171,7 @@ const wrapRunFunction =
     }
 
     const abortController = new AbortController();
+    activeRunAbortControllers.add(abortController);
     const runId = await options.hubClient.registerRunStart({
       name: runOptions.name,
       optionsKeys,
@@ -163,6 +182,7 @@ const wrapRunFunction =
       originalOptions: runOptions,
       sandboxOptions,
     });
+    await options.hubClient.watchRunCancel?.(runId, abortController);
 
     const nextOptions = withEventForwarding(
       {
@@ -178,8 +198,14 @@ const wrapRunFunction =
     try {
       result = await realRun(nextOptions);
     } catch (error) {
-      await options.hubClient.recordRunFailed?.({ runId, error });
+      if (abortController.signal.aborted) {
+        await options.hubClient.recordRunCanceled?.({ runId, reason: error });
+      } else {
+        await options.hubClient.recordRunFailed?.({ runId, error });
+      }
       throw error;
+    } finally {
+      activeRunAbortControllers.delete(abortController);
     }
 
     await options.hubClient.recordRunComplete({ runId, result });

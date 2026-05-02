@@ -80,6 +80,7 @@ describe("Dashboard pages", () => {
           startedAt,
           endedAt: null,
           status: "running",
+          cancelRequested: false,
           completionSignal: null,
           configSnapshot: {},
           errorMessage: null,
@@ -131,6 +132,7 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("codex / gpt-5.5");
     expect(markup).toContain("docker");
     expect(markup).toContain("running");
+    expect(markup).toContain("Cancel");
     expect(markup).toContain("checking status");
     expect(markup).toContain("Bash bun test");
   });
@@ -149,6 +151,7 @@ describe("Dashboard pages", () => {
       startedAt,
       endedAt,
       status: "completed",
+      cancelRequested: false,
       completionSignal: "<promise>COMPLETE</promise>",
       configSnapshot: {},
       errorMessage: null,
@@ -218,6 +221,7 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("30");
     expect(markup).toContain("15");
     expect(markup).toContain("Bash bun run check");
+    expect(markup).not.toContain("Cancel");
   });
 
   it("renders n/a for Run token usage when iteration usage is unavailable", () => {
@@ -234,6 +238,7 @@ describe("Dashboard pages", () => {
       startedAt,
       endedAt,
       status: "completed",
+      cancelRequested: false,
       completionSignal: null,
       configSnapshot: {},
       errorMessage: null,
