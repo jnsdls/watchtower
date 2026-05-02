@@ -146,7 +146,7 @@ export const createSseEventStream = ({
 
         const backfillEvents = await listEventsAfterSequence(
           db,
-          parseLastEventId(lastEventId),
+          lastSentSequence,
         );
 
         for (const event of backfillEvents) {
