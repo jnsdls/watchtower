@@ -15,7 +15,10 @@ import {
   getRun,
   getTask,
   listEventsForRun,
+  listJobsForProjectSummary,
+  listProjectsByRecentActivity,
   listRuns,
+  listRunsForJob,
 } from "./queries";
 import { applyDatabaseMigrations } from "./setup";
 
@@ -113,5 +116,121 @@ describe("Hub db queries", () => {
       sha: "abc123",
     });
     await expect(listRuns(db)).resolves.toHaveLength(1);
+  });
+
+  it("reads Dashboard summaries in recency and timeline order", async () => {
+    const older = new Date("2030-05-02T20:00:00.000Z");
+    const newer = new Date("2030-05-02T21:00:00.000Z");
+    const ended = new Date("2030-05-02T21:07:00.000Z");
+    const quietProject = await createProject(db, {
+      localPath: "/tmp/quiet",
+      displayName: "quiet",
+    });
+    const activeProject = await createProject(db, {
+      gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+      displayName: "watchtower",
+    });
+    const activeJob = await createJob(db, {
+      projectId: activeProject.id,
+      startedAt: newer,
+      endedAt: ended,
+      status: "completed",
+    });
+    const staleJob = await createJob(db, {
+      projectId: activeProject.id,
+      startedAt: older,
+      status: "running",
+    });
+    const staleRun = await createRun(db, {
+      jobId: staleJob.id,
+      name: "implementer",
+      agentProvider: "codex",
+      agentModel: "gpt-5.5",
+      sandboxProvider: "docker",
+      startedAt: older,
+      status: "running",
+      configSnapshot: {},
+    });
+    const claudeRun = await createRun(db, {
+      jobId: activeJob.id,
+      name: "reviewer",
+      agentProvider: "claudeCode",
+      agentModel: "claude-opus-4-6",
+      sandboxProvider: "docker",
+      startedAt: newer,
+      endedAt: ended,
+      status: "completed",
+      configSnapshot: {},
+    });
+    await createIteration(db, {
+      runId: claudeRun.id,
+      n: 1,
+      startedAt: newer,
+      endedAt: ended,
+      inputTokens: 100,
+      outputTokens: 25,
+      cacheReadInputTokens: 10,
+      cacheCreationInputTokens: 5,
+    });
+    await createEvent(db, {
+      sequenceNumber: 2,
+      runId: claudeRun.id,
+      type: "toolCall",
+      payload: { name: "Bash", formattedArgs: "bun test" },
+      timestamp: ended,
+    });
+    await createEvent(db, {
+      sequenceNumber: 1,
+      runId: claudeRun.id,
+      type: "text",
+      payload: { message: "checking" },
+      timestamp: newer,
+    });
+
+    await expect(listProjectsByRecentActivity(db)).resolves.toMatchObject([
+      {
+        id: activeProject.id,
+        displayName: "watchtower",
+        latestActivityAt: newer,
+        jobCount: 2,
+        runCount: 2,
+      },
+      {
+        id: quietProject.id,
+        displayName: "quiet",
+        latestActivityAt: quietProject.createdAt,
+        jobCount: 0,
+        runCount: 0,
+      },
+    ]);
+    await expect(
+      listJobsForProjectSummary(db, activeProject.id),
+    ).resolves.toMatchObject([
+      {
+        id: activeJob.id,
+        status: "completed",
+        runCount: 1,
+        totalTokens: 140,
+      },
+      {
+        id: staleJob.id,
+        status: "running",
+        runCount: 1,
+        totalTokens: null,
+      },
+    ]);
+    await expect(listRunsForJob(db, staleJob.id)).resolves.toMatchObject([
+      {
+        id: staleRun.id,
+        status: "running",
+        agentProvider: "codex",
+        agentModel: "gpt-5.5",
+        sandboxProvider: "docker",
+      },
+    ]);
+    await expect(listEventsForRun(db, claudeRun.id)).resolves.toMatchObject([
+      { sequenceNumber: 1, type: "text" },
+      { sequenceNumber: 2, type: "toolCall" },
+    ]);
   });
 });

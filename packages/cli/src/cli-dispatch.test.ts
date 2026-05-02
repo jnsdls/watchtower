@@ -47,6 +47,8 @@ describe("cli-dispatch", () => {
       {
         name: "run",
         mainPath: ".sandcastle/main.ts",
+        hubUrl: undefined,
+        open: true,
       },
       {
         name: "hub start",
@@ -74,7 +76,7 @@ describe("cli-dispatch", () => {
     ).resolves.toBe(1);
 
     expect(output.join("\n")).toContain("Usage: watchtower <command>");
-    expect(output.join("\n")).toContain("watchtower run <main.ts>");
+    expect(output.join("\n")).toContain("watchtower run");
   });
 
   it("recognizes hub start --detach as a flag", async () => {
@@ -103,7 +105,7 @@ describe("cli-dispatch", () => {
 
     expect(calls).toEqual([]);
     expect(output.join("\n")).toContain("Missing required argument: <main.ts>");
-    expect(output.join("\n")).toContain("watchtower run <main.ts>");
+    expect(output.join("\n")).toContain("watchtower run");
   });
 
   it("prints the V1 surface for --help", async () => {
@@ -115,15 +117,59 @@ describe("cli-dispatch", () => {
       }),
     ).resolves.toBe(0);
 
-    expect(output.join("\n")).toContain("watchtower run <main.ts>");
+    expect(output.join("\n")).toContain("watchtower run");
     expect(output.join("\n")).toContain("watchtower hub start [--detach]");
     expect(output.join("\n")).toContain("watchtower hub stop");
     expect(output.join("\n")).toContain("watchtower hub status");
     expect(output.join("\n")).toContain("watchtower open");
   });
 
+  it("parses run --hub and --no-open flags", async () => {
+    const { calls, handlers } = createRecorder();
+
+    await expect(
+      dispatchCli(
+        [
+          "run",
+          "--hub",
+          "http://127.0.0.1:7788",
+          "--no-open",
+          ".sandcastle/main.ts",
+        ],
+        { handlers },
+      ),
+    ).resolves.toBe(7);
+
+    expect(calls).toEqual([
+      {
+        name: "run",
+        mainPath: ".sandcastle/main.ts",
+        hubUrl: "http://127.0.0.1:7788",
+        open: false,
+      },
+    ]);
+  });
+
+  it("prints an error when run --hub is missing its URL", async () => {
+    const output: string[] = [];
+    const { calls, handlers } = createRecorder();
+
+    await expect(
+      dispatchCli(["run", "--hub"], {
+        handlers,
+        stderr: (message) => output.push(message),
+      }),
+    ).resolves.toBe(1);
+
+    expect(calls).toEqual([]);
+    expect(output.join("\n")).toContain("Missing required value: --hub <url>");
+  });
+
   it.each([
-    [["run", ".sandcastle/main.ts"], "watchtower run is not implemented yet."],
+    [
+      ["run", "--no-open", ".sandcastle/main.ts"],
+      "watchtower run is not implemented yet.",
+    ],
     [["hub", "start"], "watchtower hub start is not implemented yet."],
     [
       ["hub", "start", "--detach"],

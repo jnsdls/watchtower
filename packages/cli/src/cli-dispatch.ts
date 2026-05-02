@@ -1,6 +1,10 @@
+import { autoOpenDashboardForRun } from "./run-auto-open";
+
 export type RunCommand = {
   name: "run";
   mainPath: string;
+  hubUrl?: string;
+  open: boolean;
 };
 
 export type HubStartCommand = {
@@ -46,7 +50,7 @@ export type DispatchOptions = {
 const helpText = `Usage: watchtower <command>
 
 Commands:
-  watchtower run <main.ts>
+  watchtower run [--hub <url>] [--no-open] <main.ts>
   watchtower hub start [--detach]
   watchtower hub stop
   watchtower hub status
@@ -61,7 +65,14 @@ const notImplemented =
 const createDefaultHandlers = (
   stderr: (message: string) => void,
 ): CliHandlers => ({
-  run: notImplemented("watchtower run", stderr),
+  run: async (command) => {
+    await autoOpenDashboardForRun({
+      hubUrl: command.hubUrl,
+      open: command.open,
+    });
+    stderr("watchtower run is not implemented yet.");
+    return 1;
+  },
   hubStart: notImplemented("watchtower hub start", stderr),
   hubStop: notImplemented("watchtower hub stop", stderr),
   hubStatus: notImplemented("watchtower hub status", stderr),
@@ -83,14 +94,54 @@ export const dispatchCli = async (
   }
 
   if (command === "run") {
-    if (subcommand === undefined) {
+    let mainPath: string | undefined;
+    let hubUrl: string | undefined;
+    let open = true;
+
+    for (let index = 0; index < [subcommand, ...rest].length; index += 1) {
+      const argument = [subcommand, ...rest][index];
+
+      if (argument === undefined) {
+        continue;
+      }
+
+      if (argument === "--no-open") {
+        open = false;
+        continue;
+      }
+
+      if (argument === "--hub") {
+        const value = [subcommand, ...rest][index + 1];
+
+        if (value === undefined) {
+          stderr(`Missing required value: --hub <url>\n\n${helpText}`);
+          return 1;
+        }
+
+        hubUrl = value;
+        index += 1;
+        continue;
+      }
+
+      if (mainPath === undefined) {
+        mainPath = argument;
+        continue;
+      }
+
+      stderr(`Unexpected argument: ${argument}\n\n${helpText}`);
+      return 1;
+    }
+
+    if (mainPath === undefined) {
       stderr(`Missing required argument: <main.ts>\n\n${helpText}`);
       return 1;
     }
 
     return handlers.run({
       name: "run",
-      mainPath: subcommand,
+      mainPath,
+      hubUrl,
+      open,
     });
   }
 
