@@ -11,6 +11,7 @@ import type {
   listRunsForJob,
 } from "../db/queries";
 import { formatDateTime, formatDuration, formatTokens } from "./format";
+import { LiveUpdates } from "./live-updates";
 
 type ProjectListItem = Awaited<
   ReturnType<typeof listProjectsByRecentActivity>
@@ -32,6 +33,7 @@ const PageShell = ({
   children: ReactNode;
 }) => (
   <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
+    <LiveUpdates />
     <header className="flex flex-col gap-2 border-slate-200 border-b pb-4">
       <p className="font-medium text-slate-500 text-sm">{eyebrow}</p>
       <h1 className="font-semibold text-3xl text-slate-950">{title}</h1>

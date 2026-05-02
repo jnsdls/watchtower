@@ -4,6 +4,7 @@ import {
   EventBatchValidationError,
   ingestEventBatch,
 } from "../../../ingestion";
+import { eventBroadcaster } from "../../../sse-stream";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,8 @@ export const POST = async (request: Request) => {
 
   try {
     const result = await ingestEventBatch(db, await request.json());
+    eventBroadcaster.publish(result.events);
+
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     if (error instanceof EventBatchValidationError) {
