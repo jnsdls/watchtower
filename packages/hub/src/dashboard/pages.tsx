@@ -10,6 +10,7 @@ import type {
   listJobsForProjectSummary,
   listProjectsByRecentActivity,
   listRunsForJob,
+  listTasksForJob,
 } from "../db/queries";
 import { formatDateTime, formatDuration, formatTokens } from "./format";
 import { LiveUpdates } from "./live-updates";
@@ -22,6 +23,7 @@ type Job = NonNullable<Awaited<ReturnType<typeof getJob>>>;
 type Run = NonNullable<Awaited<ReturnType<typeof getRun>>>;
 type JobSummary = Awaited<ReturnType<typeof listJobsForProjectSummary>>[number];
 type RunListItem = Awaited<ReturnType<typeof listRunsForJob>>[number];
+type TaskListItem = Awaited<ReturnType<typeof listTasksForJob>>[number];
 type EventListItem = Awaited<ReturnType<typeof listEventsForRun>>[number];
 type IterationListItem = Awaited<
   ReturnType<typeof listIterationsForRun>
@@ -168,12 +170,69 @@ export function ProjectDetailPage({
 export function JobDetailPage({
   job,
   runs,
+  tasks,
 }: {
   job: Job;
   runs: RunListItem[];
+  tasks: TaskListItem[];
 }) {
+  const runsByTaskId = new Map<string, RunListItem[]>();
+  for (const run of runs) {
+    if (!run.taskId) {
+      continue;
+    }
+
+    const taskRuns = runsByTaskId.get(run.taskId) ?? [];
+    taskRuns.push(run);
+    runsByTaskId.set(run.taskId, taskRuns);
+  }
+
   return (
     <PageShell eyebrow="Job" title={job.id}>
+      {tasks.length > 0 ? (
+        <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="border-slate-200 border-b px-4 py-3">
+            <h2 className="font-medium text-slate-950">Tasks</h2>
+          </div>
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="px-4 py-3 font-medium">Task</th>
+                <th className="px-4 py-3 font-medium">Branch</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Runs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => {
+                const taskRuns = runsByTaskId.get(task.id) ?? [];
+
+                return (
+                  <tr className="border-slate-200 border-t" key={task.id}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-950">
+                        {task.title}
+                      </div>
+                      <div className="text-slate-500">{task.externalId}</div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {task.branch ?? "n/a"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Status value={task.status} />
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {taskRuns.length === 0
+                        ? "n/a"
+                        : taskRuns.map((run) => run.name).join(", ")}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
       {runs.length === 0 ? (
         <EmptyState>No Runs have been captured for this Job.</EmptyState>
       ) : (

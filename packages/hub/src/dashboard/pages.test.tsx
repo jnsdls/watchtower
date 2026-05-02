@@ -66,11 +66,22 @@ describe("Dashboard pages", () => {
         processPid: null,
         watchtowerVersion: null,
       },
+      tasks: [
+        {
+          id: "00000000-0000-4000-8000-000000000011",
+          jobId,
+          externalId: "10",
+          title: "Planner extraction",
+          branch: "sandcastle/issue-10-planner-extraction",
+          status: "pending",
+          createdAt: startedAt,
+        },
+      ],
       runs: [
         {
           id: runId,
           jobId,
-          taskId: null,
+          taskId: "00000000-0000-4000-8000-000000000011",
           name: "implementer",
           agentProvider: "codex",
           agentModel: "gpt-5.5",
@@ -128,6 +139,9 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("completed");
     expect(markup).toContain("140");
     expect(markup).toContain("implementer");
+    expect(markup).toContain("Tasks");
+    expect(markup).toContain("Planner extraction");
+    expect(markup).toContain("sandcastle/issue-10-planner-extraction");
     expect(markup).toContain("codex / gpt-5.5");
     expect(markup).toContain("docker");
     expect(markup).toContain("running");

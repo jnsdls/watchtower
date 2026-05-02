@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { JobDetailPage } from "../../../dashboard/pages";
-import { getJob, listRunsForJob } from "../../../db/queries";
+import { getJob, listRunsForJob, listTasksForJob } from "../../../db/queries";
 import { getHubDatabase } from "../../../db/runtime";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ export default async function JobPage({
   }
 
   const runs = await listRunsForJob(db, id);
+  const tasks = await listTasksForJob(db, id);
 
-  return <JobDetailPage job={job} runs={runs} />;
+  return <JobDetailPage job={job} runs={runs} tasks={tasks} />;
 }

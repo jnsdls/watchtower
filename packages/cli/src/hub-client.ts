@@ -60,6 +60,12 @@ type TelemetryEvent =
       readonly commits: readonly { readonly sha: string }[];
       readonly errorMessage?: string | null;
       readonly timestamp: string;
+    }
+  | {
+      readonly type: "planner.output";
+      readonly runId: string;
+      readonly stdout: string;
+      readonly timestamp: string;
     };
 
 export type WatchtowerHubClientOptions = {
@@ -322,7 +328,16 @@ export const createWatchtowerHubClient = ({
       ]);
       return runId;
     },
-    recordPlannerOutput: () => {},
+    recordPlannerOutput: async (runId, stdout) => {
+      await post([
+        {
+          type: "planner.output",
+          runId,
+          stdout,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    },
     recordRunComplete: async (complete: RunComplete) => {
       await flush();
       await post([

@@ -7,9 +7,14 @@ import {
   createJob,
   createRun,
   findOrCreateProject,
+  findTaskForJobByExternalId,
   updateJobComplete,
   updateRunTelemetryComplete,
 } from "../db/queries";
+import {
+  extractTasksFromPlannerOutput,
+  type PlannerExtractionLogger,
+} from "../planner-extraction";
 
 const eventInputSchema = z.object({
   sequenceNumber: z.number().int().positive().optional(),
@@ -87,12 +92,20 @@ const runCompletedEventSchema = z.object({
   timestamp: z.coerce.date(),
 });
 
+const plannerOutputEventSchema = z.object({
+  type: z.literal("planner.output"),
+  runId: z.uuid(),
+  stdout: z.string(),
+  timestamp: z.coerce.date(),
+});
+
 const telemetryEventSchema = z.discriminatedUnion("type", [
   jobStartedEventSchema,
   jobCompletedEventSchema,
   runStartedEventSchema,
   runEventSchema,
   runCompletedEventSchema,
+  plannerOutputEventSchema,
 ]);
 
 const eventBatchSchema = z.union([
@@ -108,6 +121,9 @@ export type EventBatchInput = z.input<typeof eventBatchSchema>;
 export type IngestedEvent = NonNullable<
   Awaited<ReturnType<typeof createEvent>>
 >;
+export type IngestEventBatchOptions = {
+  readonly logger?: PlannerExtractionLogger;
+};
 
 export class EventBatchValidationError extends Error {
   constructor(message: string) {
@@ -119,6 +135,7 @@ export class EventBatchValidationError extends Error {
 export const ingestEventBatch = async (
   db: HubDatabase,
   input: EventBatchInput,
+  options: IngestEventBatchOptions = {},
 ): Promise<{ events: IngestedEvent[] }> => {
   const parsed = eventBatchSchema.safeParse(input);
 
@@ -130,7 +147,7 @@ export const ingestEventBatch = async (
     const ingestedEvents: IngestedEvent[] = [];
 
     for (const event of parsed.data) {
-      const ingested = await ingestEvent(tx, event);
+      const ingested = await ingestEvent(tx, event, options);
 
       if (ingested) {
         ingestedEvents.push(ingested);
@@ -153,6 +170,8 @@ const isTelemetryEvent = (
     case "job.completed":
     case "run.completed":
       return "status" in event;
+    case "planner.output":
+      return "stdout" in event;
     case "run.started":
       return "agentProvider" in event;
     case "run.event":
@@ -165,6 +184,7 @@ const isTelemetryEvent = (
 const ingestEvent = async (
   tx: HubTransaction,
   event: ParsedEvent,
+  options: IngestEventBatchOptions,
 ): Promise<IngestedEvent | null> => {
   if (!isTelemetryEvent(event)) {
     return ingestRawEvent(tx, event);
@@ -194,10 +214,13 @@ const ingestEvent = async (
         status: event.status,
       });
       return null;
-    case "run.started":
+    case "run.started": {
+      const taskId = await taskIdForRunStart(tx, event);
+
       await createRun(tx, {
         id: event.runId,
         jobId: event.jobId,
+        taskId,
         name: event.name,
         agentProvider: event.agentProvider,
         agentModel: event.agentModel ?? null,
@@ -209,6 +232,7 @@ const ingestEvent = async (
         configSnapshot: event.configSnapshot,
       });
       return null;
+    }
     case "run.completed":
       await updateRunTelemetryComplete(tx, {
         id: event.runId,
@@ -243,7 +267,43 @@ const ingestEvent = async (
         payload: event.payload,
         timestamp: event.timestamp,
       });
+    case "planner.output":
+      await extractTasksFromPlannerOutput(tx, {
+        logger: options.logger,
+        runId: event.runId,
+        stdout: event.stdout,
+      });
+      return null;
   }
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const taskIdFromConfigSnapshot = (configSnapshot: Record<string, unknown>) => {
+  const options = configSnapshot.options;
+  const promptArgs = isRecord(options)
+    ? options.promptArgs
+    : configSnapshot.promptArgs;
+
+  if (!isRecord(promptArgs) || typeof promptArgs.TASK_ID !== "string") {
+    return null;
+  }
+
+  return promptArgs.TASK_ID;
+};
+
+const taskIdForRunStart = async (
+  tx: HubTransaction,
+  event: z.infer<typeof runStartedEventSchema>,
+) => {
+  const externalId = taskIdFromConfigSnapshot(event.configSnapshot);
+  if (!externalId) {
+    return null;
+  }
+
+  const task = await findTaskForJobByExternalId(tx, event.jobId, externalId);
+  return task?.id ?? null;
 };
 
 const ingestRawEvent = (tx: HubTransaction, event: RawEventInput) =>

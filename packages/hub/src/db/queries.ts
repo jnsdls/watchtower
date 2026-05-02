@@ -1,4 +1,4 @@
-import { desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import type { HubQueryDatabase } from "./client";
 import {
   commits,
@@ -207,6 +207,22 @@ export const createTask = async (
 
 export const getTask = async (db: HubQueryDatabase, id: string) =>
   db.query.tasks.findFirst({ where: eq(tasks.id, id) });
+
+export const findTaskForJobByExternalId = async (
+  db: HubQueryDatabase,
+  jobId: string,
+  externalId: string,
+) =>
+  db.query.tasks.findFirst({
+    where: and(eq(tasks.jobId, jobId), eq(tasks.externalId, externalId)),
+  });
+
+export const listTasksForJob = async (db: HubQueryDatabase, jobId: string) =>
+  db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.jobId, jobId))
+    .orderBy(tasks.externalId);
 
 export const createRun = async (
   db: HubQueryDatabase,

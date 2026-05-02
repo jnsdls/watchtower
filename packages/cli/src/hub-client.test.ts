@@ -52,6 +52,10 @@ describe("hub-client", () => {
         stdout: "done",
       },
     });
+    await client.recordPlannerOutput(
+      "00000000-0000-4000-8000-000000000002",
+      '<plan>{"issues":[]}</plan>',
+    );
     await client.flush();
 
     expect(
@@ -62,7 +66,13 @@ describe("hub-client", () => {
             )
           : [],
       ),
-    ).toEqual(["run.started", "run.event", "run.event", "run.completed"]);
+    ).toEqual([
+      "run.started",
+      "run.event",
+      "run.event",
+      "run.completed",
+      "planner.output",
+    ]);
   });
 
   it("retries dropped telemetry without throwing to the Runner", async () => {
