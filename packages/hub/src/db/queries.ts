@@ -12,6 +12,21 @@ import {
 
 export type JsonRecord = Record<string, unknown>;
 
+const millisecondsOrZero = (date: Date | null) => date?.getTime() ?? 0;
+
+const maxDate = (...dates: (Date | null)[]) =>
+  dates.reduce<Date | null>((latest, date) => {
+    if (!date) {
+      return latest;
+    }
+
+    if (!latest || date > latest) {
+      return date;
+    }
+
+    return latest;
+  }, null);
+
 const requireRow = <T>(row: T | undefined, entityName: string) => {
   if (!row) {
     throw new Error(`Expected ${entityName} insert to return a row`);
@@ -43,6 +58,37 @@ export const createProject = async (
 export const getProject = async (db: HubQueryDatabase, id: string) =>
   db.query.projects.findFirst({ where: eq(projects.id, id) });
 
+export const listProjectsByRecentActivity = async (db: HubQueryDatabase) => {
+  const projectRows = await db.select().from(projects);
+  const jobRows = await db.select().from(jobs);
+  const runRows = await db.select().from(runs);
+
+  return projectRows
+    .map((project) => {
+      const projectJobs = jobRows.filter((job) => job.projectId === project.id);
+      const projectJobIds = new Set(projectJobs.map((job) => job.id));
+      const projectRuns = runRows.filter((run) => projectJobIds.has(run.jobId));
+      const latestActivityAt =
+        maxDate(
+          project.createdAt,
+          ...projectJobs.map((job) => maxDate(job.startedAt, job.endedAt)),
+          ...projectRuns.map((run) => maxDate(run.startedAt, run.endedAt)),
+        ) ?? project.createdAt;
+
+      return {
+        ...project,
+        latestActivityAt,
+        jobCount: projectJobs.length,
+        runCount: projectRuns.length,
+      };
+    })
+    .sort(
+      (left, right) =>
+        millisecondsOrZero(right.latestActivityAt) -
+        millisecondsOrZero(left.latestActivityAt),
+    );
+};
+
 export const createJob = async (
   db: HubQueryDatabase,
   input: {
@@ -60,6 +106,42 @@ export const createJob = async (
 
 export const getJob = async (db: HubQueryDatabase, id: string) =>
   db.query.jobs.findFirst({ where: eq(jobs.id, id) });
+
+export const listJobsForProjectSummary = async (
+  db: HubQueryDatabase,
+  projectId: string,
+) => {
+  const jobRows = await db
+    .select()
+    .from(jobs)
+    .where(eq(jobs.projectId, projectId))
+    .orderBy(desc(jobs.startedAt));
+  const runRows = await db.select().from(runs);
+  const iterationRows = await db.select().from(iterations);
+
+  return jobRows.map((job) => {
+    const jobRuns = runRows.filter((run) => run.jobId === job.id);
+    const runIds = new Set(jobRuns.map((run) => run.id));
+    const tokenValues = iterationRows
+      .filter((iteration) => runIds.has(iteration.runId))
+      .flatMap((iteration) => [
+        iteration.inputTokens,
+        iteration.outputTokens,
+        iteration.cacheReadInputTokens,
+        iteration.cacheCreationInputTokens,
+      ])
+      .filter((value): value is number => value !== null);
+
+    return {
+      ...job,
+      runCount: jobRuns.length,
+      totalTokens:
+        tokenValues.length === 0
+          ? null
+          : tokenValues.reduce((sum, value) => sum + value, 0),
+    };
+  });
+};
 
 export const createTask = async (
   db: HubQueryDatabase,
@@ -106,6 +188,13 @@ export const getRun = async (db: HubQueryDatabase, id: string) =>
 
 export const listRuns = async (db: HubQueryDatabase) =>
   db.select().from(runs).orderBy(desc(runs.startedAt));
+
+export const listRunsForJob = async (db: HubQueryDatabase, jobId: string) =>
+  db
+    .select()
+    .from(runs)
+    .where(eq(runs.jobId, jobId))
+    .orderBy(desc(runs.startedAt));
 
 export const createIteration = async (
   db: HubQueryDatabase,
