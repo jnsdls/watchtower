@@ -61,6 +61,243 @@ const Status = ({ value }: { value: string }) => (
   </span>
 );
 
+const maxDate = (...dates: (Date | null | undefined)[]) =>
+  dates.reduce<Date | null>((latest, date) => {
+    if (!date) {
+      return latest;
+    }
+
+    if (!latest || date > latest) {
+      return date;
+    }
+
+    return latest;
+  }, null);
+
+const statusBarClass = (status: string) => {
+  switch (status) {
+    case "running":
+      return "bg-sky-600 hover:bg-sky-700";
+    case "succeeded":
+    case "completed":
+      return "bg-emerald-600 hover:bg-emerald-700";
+    case "failed":
+      return "bg-rose-600 hover:bg-rose-700";
+    case "canceled":
+      return "bg-amber-600 hover:bg-amber-700";
+    default:
+      return "bg-slate-600 hover:bg-slate-700";
+  }
+};
+
+const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
+
+const percentBetween = (date: Date, start: Date, spanMs: number) =>
+  clampPercent(((date.getTime() - start.getTime()) / spanMs) * 100);
+
+const fallbackTimelineEnd = (start: Date) => new Date(start.getTime() + 60_000);
+
+type GanttBar = RunListItem & {
+  track: number;
+};
+
+type GanttLane = {
+  id: string;
+  label: string;
+  detail: string | null;
+  runs: GanttBar[];
+};
+
+const assignTracks = (runs: RunListItem[], timelineEnd: Date): GanttBar[] => {
+  const trackEnds: Date[] = [];
+
+  return [...runs]
+    .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime())
+    .map((run) => {
+      const runEnd = run.endedAt ?? timelineEnd;
+      const track = trackEnds.findIndex((end) => end <= run.startedAt);
+      const assignedTrack = track === -1 ? trackEnds.length : track;
+      trackEnds[assignedTrack] = runEnd;
+
+      return {
+        ...run,
+        track: assignedTrack,
+      };
+    });
+};
+
+const buildGanttLanes = ({
+  runs,
+  tasks,
+  timelineEnd,
+}: {
+  runs: RunListItem[];
+  tasks: TaskListItem[];
+  timelineEnd: Date;
+}) => {
+  if (tasks.length > 0) {
+    return {
+      modeLabel: "Swimlanes by Task",
+      lanes: tasks.map<GanttLane>((task) => ({
+        id: task.id,
+        label: task.title,
+        detail: task.branch ?? task.externalId,
+        runs: assignTracks(
+          runs.filter((run) => run.taskId === task.id),
+          timelineEnd,
+        ),
+      })),
+    };
+  }
+
+  const runNames = [...new Set(runs.map((run) => run.name))].sort(
+    (left, right) => left.localeCompare(right),
+  );
+
+  return {
+    modeLabel: "Swimlanes by Run name",
+    lanes: runNames.map<GanttLane>((name) => ({
+      id: name,
+      label: name,
+      detail: null,
+      runs: assignTracks(
+        runs.filter((run) => run.name === name),
+        timelineEnd,
+      ),
+    })),
+  };
+};
+
+const JobGantt = ({
+  job,
+  runs,
+  tasks,
+}: {
+  job: Job;
+  runs: RunListItem[];
+  tasks: TaskListItem[];
+}) => {
+  const latestObservedEnd =
+    maxDate(
+      job.endedAt,
+      ...runs.map((run) => run.endedAt),
+      ...runs.map((run) => run.startedAt),
+    ) ?? fallbackTimelineEnd(job.startedAt);
+  const hasRunningRun = runs.some((run) => run.endedAt === null);
+  const timelineEnd =
+    maxDate(latestObservedEnd, hasRunningRun ? new Date() : null) ??
+    fallbackTimelineEnd(job.startedAt);
+  const finalTimelineEnd =
+    timelineEnd <= job.startedAt
+      ? fallbackTimelineEnd(job.startedAt)
+      : timelineEnd;
+  const spanMs = Math.max(
+    1,
+    finalTimelineEnd.getTime() - job.startedAt.getTime(),
+  );
+  const { lanes, modeLabel } = buildGanttLanes({
+    runs,
+    tasks,
+    timelineEnd: finalTimelineEnd,
+  });
+
+  return (
+    <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-slate-200 border-b px-4 py-3">
+        <div>
+          <h2 className="font-medium text-slate-950">Run timeline</h2>
+          <p className="text-slate-500 text-sm">{modeLabel}</p>
+        </div>
+        <div className="text-slate-500 text-sm">
+          {formatDateTime(job.startedAt)} - {formatDateTime(finalTimelineEnd)}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="min-w-[760px]">
+          <div className="grid grid-cols-[13rem_minmax(32rem,1fr)] border-slate-200 border-b bg-slate-50 text-slate-500 text-xs">
+            <div className="px-4 py-3 font-medium">Swimlane</div>
+            <div className="relative px-4 py-3">
+              <div className="flex justify-between">
+                <span>{formatDateTime(job.startedAt)}</span>
+                <span>{formatDateTime(finalTimelineEnd)}</span>
+              </div>
+            </div>
+          </div>
+          {lanes.map((lane) => {
+            const trackCount =
+              Math.max(1, ...lane.runs.map((run) => run.track + 1)) || 1;
+            const laneHeight = trackCount * 42 + 24;
+
+            return (
+              <div
+                className="grid grid-cols-[13rem_minmax(32rem,1fr)] border-slate-200 border-b last:border-b-0"
+                key={lane.id}
+              >
+                <div className="flex min-h-20 flex-col justify-center px-4 py-3">
+                  <div className="break-words font-medium text-slate-950 text-sm">
+                    {lane.label}
+                  </div>
+                  {lane.detail ? (
+                    <div className="mt-1 break-words text-slate-500 text-xs">
+                      {lane.detail}
+                    </div>
+                  ) : null}
+                </div>
+                <div
+                  className="relative border-slate-100 border-l bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px)] bg-[length:25%_100%] px-4 py-3"
+                  style={{ minHeight: laneHeight }}
+                >
+                  {lane.runs.length === 0 ? (
+                    <div className="flex h-full items-center text-slate-400 text-sm">
+                      No Runs
+                    </div>
+                  ) : (
+                    lane.runs.map((run) => {
+                      const runEnd = run.endedAt ?? finalTimelineEnd;
+                      const left = percentBetween(
+                        run.startedAt,
+                        job.startedAt,
+                        spanMs,
+                      );
+                      const right = percentBetween(
+                        runEnd,
+                        job.startedAt,
+                        spanMs,
+                      );
+                      const width = Math.max(1, right - left);
+
+                      return (
+                        <Link
+                          aria-label={`Open ${run.name} Run`}
+                          className={`absolute flex h-8 items-center overflow-hidden rounded-md px-3 font-medium text-white text-xs shadow-sm transition-colors ${statusBarClass(
+                            run.status,
+                          )}`}
+                          href={`/runs/${run.id}`}
+                          key={run.id}
+                          style={{
+                            left: `${left}%`,
+                            top: 12 + run.track * 42,
+                            width: `max(${width}%, 2.5rem)`,
+                          }}
+                          title={`${run.name} - ${run.status}`}
+                        >
+                          <span className="truncate">
+                            {run.name} · {run.status}
+                          </span>
+                        </Link>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
   return (
     <PageShell eyebrow="Dashboard" title="Projects">
@@ -190,6 +427,9 @@ export function JobDetailPage({
 
   return (
     <PageShell eyebrow="Job" title={job.id}>
+      {runs.length > 0 ? (
+        <JobGantt job={job} runs={runs} tasks={tasks} />
+      ) : null}
       {tasks.length > 0 ? (
         <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
           <div className="border-slate-200 border-b px-4 py-3">

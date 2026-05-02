@@ -151,6 +151,148 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("Bash bun test");
   });
 
+  it("renders planner-driven Job Gantt swimlanes by Task", () => {
+    const taskId = "00000000-0000-4000-8000-000000000011";
+    const markup = renderToStaticMarkup(
+      <JobDetailPage
+        job={{
+          id: jobId,
+          projectId,
+          startedAt,
+          endedAt: new Date("2026-05-02T20:10:00.000Z"),
+          status: "completed",
+          processPid: null,
+          watchtowerVersion: null,
+        }}
+        runs={[
+          {
+            id: "00000000-0000-4000-8000-000000000021",
+            jobId,
+            taskId,
+            name: "implementer",
+            agentProvider: "codex",
+            agentModel: "gpt-5.5",
+            sandboxProvider: "docker",
+            branch: null,
+            maxIterations: null,
+            startedAt: new Date("2026-05-02T20:01:00.000Z"),
+            endedAt: new Date("2026-05-02T20:06:00.000Z"),
+            status: "succeeded",
+            cancelRequested: false,
+            completionSignal: null,
+            configSnapshot: {},
+            errorMessage: null,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000022",
+            jobId,
+            taskId,
+            name: "reviewer",
+            agentProvider: "claudeCode",
+            agentModel: "claude-opus-4-6",
+            sandboxProvider: "docker",
+            branch: null,
+            maxIterations: null,
+            startedAt: new Date("2026-05-02T20:04:00.000Z"),
+            endedAt: new Date("2026-05-02T20:08:00.000Z"),
+            status: "failed",
+            cancelRequested: false,
+            completionSignal: null,
+            configSnapshot: {},
+            errorMessage: null,
+          },
+        ]}
+        tasks={[
+          {
+            id: taskId,
+            jobId,
+            externalId: "13",
+            title: "Job-detail Gantt + swimlanes",
+            branch: "sandcastle/issue-13-job-detail-gantt-swimlanes",
+            status: "pending",
+            createdAt: startedAt,
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Run timeline");
+    expect(markup).toContain("Swimlanes by Task");
+    expect(markup).toContain("Job-detail Gantt + swimlanes");
+    expect(markup).toContain("implementer");
+    expect(markup).toContain("reviewer");
+    expect(markup).toContain(
+      'href="/runs/00000000-0000-4000-8000-000000000021"',
+    );
+    expect(markup).toContain('aria-label="Open implementer Run"');
+    expect(markup).toContain("bg-emerald-600");
+    expect(markup).toContain("bg-rose-600");
+  });
+
+  it("renders non-planner Job Gantt swimlanes by Run name", () => {
+    const markup = renderToStaticMarkup(
+      <JobDetailPage
+        job={{
+          id: jobId,
+          projectId,
+          startedAt,
+          endedAt: new Date("2026-05-02T20:10:00.000Z"),
+          status: "completed",
+          processPid: null,
+          watchtowerVersion: null,
+        }}
+        runs={[
+          {
+            id: "00000000-0000-4000-8000-000000000031",
+            jobId,
+            taskId: null,
+            name: "worker",
+            agentProvider: "codex",
+            agentModel: "gpt-5.5",
+            sandboxProvider: "docker",
+            branch: null,
+            maxIterations: null,
+            startedAt: new Date("2026-05-02T20:01:00.000Z"),
+            endedAt: new Date("2026-05-02T20:07:00.000Z"),
+            status: "canceled",
+            cancelRequested: true,
+            completionSignal: null,
+            configSnapshot: {},
+            errorMessage: null,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000032",
+            jobId,
+            taskId: null,
+            name: "reviewer",
+            agentProvider: "claudeCode",
+            agentModel: "claude-opus-4-6",
+            sandboxProvider: "docker",
+            branch: null,
+            maxIterations: null,
+            startedAt: new Date("2026-05-02T20:03:00.000Z"),
+            endedAt: new Date("2026-05-02T20:09:00.000Z"),
+            status: "running",
+            cancelRequested: false,
+            completionSignal: null,
+            configSnapshot: {},
+            errorMessage: null,
+          },
+        ]}
+        tasks={[]}
+      />,
+    );
+
+    expect(markup).toContain("Swimlanes by Run name");
+    expect(markup).toContain("worker");
+    expect(markup).toContain("reviewer");
+    expect(markup).toContain(
+      'href="/runs/00000000-0000-4000-8000-000000000031"',
+    );
+    expect(markup).toContain("bg-amber-600");
+    expect(markup).toContain("bg-sky-600");
+  });
+
   it("renders iteration boundaries and token usage on the Run detail page", () => {
     const run: ComponentProps<typeof RunDetailPage>["run"] = {
       id: runId,
