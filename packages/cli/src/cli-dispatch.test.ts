@@ -124,14 +124,6 @@ describe("cli-dispatch", () => {
 
   it.each([
     [["run", ".sandcastle/main.ts"], "watchtower run is not implemented yet."],
-    [["hub", "start"], "watchtower hub start is not implemented yet."],
-    [
-      ["hub", "start", "--detach"],
-      "watchtower hub start is not implemented yet.",
-    ],
-    [["hub", "stop"], "watchtower hub stop is not implemented yet."],
-    [["hub", "status"], "watchtower hub status is not implemented yet."],
-    [["open"], "watchtower open is not implemented yet."],
   ])("uses a non-zero not implemented stub for %s", async (argv, expectedMessage) => {
     const output: string[] = [];
 

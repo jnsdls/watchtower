@@ -1,3 +1,12 @@
+import {
+  getHubStatus,
+  openHub,
+  resolveHubConfig,
+  startHubDetached,
+  startHubForeground,
+  stopDetachedHub,
+} from "./hub-bootstrap.ts";
+
 export type RunCommand = {
   name: "run";
   mainPath: string;
@@ -59,13 +68,64 @@ const notImplemented =
   };
 
 const createDefaultHandlers = (
+  stdout: (message: string) => void,
   stderr: (message: string) => void,
 ): CliHandlers => ({
   run: notImplemented("watchtower run", stderr),
-  hubStart: notImplemented("watchtower hub start", stderr),
-  hubStop: notImplemented("watchtower hub stop", stderr),
-  hubStatus: notImplemented("watchtower hub status", stderr),
-  open: notImplemented("watchtower open", stderr),
+  hubStart: async (command) => {
+    const config = resolveHubConfig();
+
+    if (!command.detach) {
+      return startHubForeground(config);
+    }
+
+    const result = await startHubDetached(config);
+    stdout(
+      result.status === "already-running"
+        ? `Hub already running at ${result.url} (pid ${result.pid}).`
+        : `Hub started at ${result.url} (pid ${result.pid}). Logs: ${result.logPath}`,
+    );
+    return 0;
+  },
+  hubStop: async () => {
+    const result = await stopDetachedHub(resolveHubConfig());
+
+    if (result.status === "not-running") {
+      stdout("Hub is not running.");
+      return 0;
+    }
+
+    if (result.status === "stale") {
+      stdout(`Cleared stale Hub PID file for pid ${result.pid}.`);
+      return 0;
+    }
+
+    stdout(`Stopped Hub pid ${result.pid}.`);
+    return 0;
+  },
+  hubStatus: async () => {
+    const status = await getHubStatus(resolveHubConfig());
+
+    if (status.reachable) {
+      stdout(`Hub reachable at ${status.url}`);
+      stdout(`Version: ${status.version}`);
+      return 0;
+    }
+
+    stdout(`Hub unreachable at ${status.url}`);
+
+    if (status.error !== undefined) {
+      stdout(`Error: ${status.error}`);
+    }
+
+    return 1;
+  },
+  open: async () => {
+    const config = resolveHubConfig();
+    await openHub(config);
+    stdout(`Opened Hub at ${config.url}.`);
+    return 0;
+  },
 });
 
 export const dispatchCli = async (
@@ -74,7 +134,7 @@ export const dispatchCli = async (
 ) => {
   const stdout = options.stdout ?? console.log;
   const stderr = options.stderr ?? console.error;
-  const handlers = options.handlers ?? createDefaultHandlers(stderr);
+  const handlers = options.handlers ?? createDefaultHandlers(stdout, stderr);
   const [command, subcommand, ...rest] = argv;
 
   if (command === undefined || command === "--help" || command === "-h") {
