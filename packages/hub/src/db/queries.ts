@@ -218,6 +218,16 @@ export const createIteration = async (
 export const getIteration = async (db: HubQueryDatabase, id: string) =>
   db.query.iterations.findFirst({ where: eq(iterations.id, id) });
 
+export const listIterationsForRun = async (
+  db: HubQueryDatabase,
+  runId: string,
+) =>
+  db
+    .select()
+    .from(iterations)
+    .where(eq(iterations.runId, runId))
+    .orderBy(iterations.n);
+
 export const createEvent = async (
   db: HubQueryDatabase,
   input: {

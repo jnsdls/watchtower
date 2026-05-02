@@ -90,6 +90,7 @@ describe("Dashboard pages", () => {
 
     const runDetailProps: ComponentProps<typeof RunDetailPage> = {
       run,
+      iterations: [],
       events: [
         {
           id: "00000000-0000-4000-8000-000000000004",
@@ -128,5 +129,135 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("running");
     expect(markup).toContain("checking status");
     expect(markup).toContain("Bash bun test");
+  });
+
+  it("renders iteration boundaries and token usage on the Run detail page", () => {
+    const run: ComponentProps<typeof RunDetailPage>["run"] = {
+      id: runId,
+      jobId,
+      taskId: null,
+      name: "planner",
+      agentProvider: "claudeCode",
+      agentModel: "claude-opus-4-6",
+      sandboxProvider: "docker",
+      branch: null,
+      maxIterations: 2,
+      startedAt,
+      endedAt,
+      status: "completed",
+      completionSignal: "<promise>COMPLETE</promise>",
+      configSnapshot: {},
+      errorMessage: null,
+    };
+    const firstIterationId = "00000000-0000-4000-8000-000000000006";
+    const secondIterationId = "00000000-0000-4000-8000-000000000007";
+
+    const markup = renderToStaticMarkup(
+      <RunDetailPage
+        events={[
+          {
+            id: "00000000-0000-4000-8000-000000000008",
+            sequenceNumber: 1,
+            runId,
+            iterationId: firstIterationId,
+            type: "text",
+            payload: { message: "planning" },
+            timestamp: startedAt,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000009",
+            sequenceNumber: 2,
+            runId,
+            iterationId: secondIterationId,
+            type: "toolCall",
+            payload: { name: "Bash", formattedArgs: "bun run check" },
+            timestamp: endedAt,
+          },
+        ]}
+        iterations={[
+          {
+            id: firstIterationId,
+            runId,
+            n: 1,
+            startedAt,
+            endedAt,
+            inputTokens: 100,
+            outputTokens: 25,
+            cacheReadInputTokens: 10,
+            cacheCreationInputTokens: 5,
+            sessionId: null,
+            sessionFilePath: null,
+          },
+          {
+            id: secondIterationId,
+            runId,
+            n: 2,
+            startedAt,
+            endedAt,
+            inputTokens: 200,
+            outputTokens: 50,
+            cacheReadInputTokens: 20,
+            cacheCreationInputTokens: 10,
+            sessionId: null,
+            sessionFilePath: null,
+          },
+        ]}
+        run={run}
+      />,
+    );
+
+    expect(markup).toContain("Iteration 1/2");
+    expect(markup).toContain("Iteration 2/2");
+    expect(markup).toContain("Run total");
+    expect(markup).toContain("300");
+    expect(markup).toContain("75");
+    expect(markup).toContain("30");
+    expect(markup).toContain("15");
+    expect(markup).toContain("Bash bun run check");
+  });
+
+  it("renders n/a for Run token usage when iteration usage is unavailable", () => {
+    const run: ComponentProps<typeof RunDetailPage>["run"] = {
+      id: runId,
+      jobId,
+      taskId: null,
+      name: "implementer",
+      agentProvider: "codex",
+      agentModel: "gpt-5.5",
+      sandboxProvider: "docker",
+      branch: null,
+      maxIterations: 1,
+      startedAt,
+      endedAt,
+      status: "completed",
+      completionSignal: null,
+      configSnapshot: {},
+      errorMessage: null,
+    };
+
+    const markup = renderToStaticMarkup(
+      <RunDetailPage
+        events={[]}
+        iterations={[
+          {
+            id: "00000000-0000-4000-8000-000000000010",
+            runId,
+            n: 1,
+            startedAt,
+            endedAt,
+            inputTokens: null,
+            outputTokens: null,
+            cacheReadInputTokens: null,
+            cacheCreationInputTokens: null,
+            sessionId: null,
+            sessionFilePath: null,
+          },
+        ]}
+        run={run}
+      />,
+    );
+
+    expect(markup).toContain("Run total");
+    expect(markup.match(/n\/a/g)?.length).toBeGreaterThanOrEqual(5);
   });
 });

@@ -6,6 +6,7 @@ import type {
   getProject,
   getRun,
   listEventsForRun,
+  listIterationsForRun,
   listJobsForProjectSummary,
   listProjectsByRecentActivity,
   listRunsForJob,
@@ -21,6 +22,9 @@ type Run = NonNullable<Awaited<ReturnType<typeof getRun>>>;
 type JobSummary = Awaited<ReturnType<typeof listJobsForProjectSummary>>[number];
 type RunListItem = Awaited<ReturnType<typeof listRunsForJob>>[number];
 type EventListItem = Awaited<ReturnType<typeof listEventsForRun>>[number];
+type IterationListItem = Awaited<
+  ReturnType<typeof listIterationsForRun>
+>[number];
 
 const PageShell = ({
   title,
@@ -236,11 +240,208 @@ const eventBody = (event: EventListItem) => {
   return JSON.stringify(event.payload);
 };
 
+const tokenMetrics = [
+  ["Input", "inputTokens"],
+  ["Output", "outputTokens"],
+  ["Cache read", "cacheReadInputTokens"],
+  ["Cache creation", "cacheCreationInputTokens"],
+] as const;
+
+type TokenMetricKey = (typeof tokenMetrics)[number][1];
+
+const sumTokens = (iterations: IterationListItem[], metric: TokenMetricKey) => {
+  const values = iterations
+    .map((iteration) => iteration[metric])
+    .filter((value): value is number => value !== null);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0);
+};
+
+const totalIterationTokens = (iteration: IterationListItem) => {
+  const values = tokenMetrics
+    .map(([, metric]) => iteration[metric])
+    .filter((value): value is number => value !== null);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0);
+};
+
+const eventIterationNumber = (event: EventListItem) => {
+  const payload = event.payload as { iteration?: unknown };
+  return typeof payload.iteration === "number" ? payload.iteration : null;
+};
+
+const EventRow = ({ event }: { event: EventListItem }) => (
+  <li
+    className="rounded-md border border-slate-200 bg-white p-4"
+    key={event.id}
+  >
+    <div className="flex flex-wrap items-center gap-3 text-sm">
+      <Status value={event.type} />
+      <span className="text-slate-500">
+        #{event.sequenceNumber} - {formatDateTime(event.timestamp)}
+      </span>
+    </div>
+    <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-slate-50 p-3 text-slate-800 text-sm">
+      {eventBody(event)}
+    </pre>
+  </li>
+);
+
+const TokenPanel = ({ iterations }: { iterations: IterationListItem[] }) => (
+  <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+    <div className="border-slate-200 border-b px-4 py-3">
+      <h2 className="font-medium text-slate-950">Token usage</h2>
+    </div>
+    <table className="w-full border-collapse text-left text-sm">
+      <thead className="bg-slate-50 text-slate-600">
+        <tr>
+          <th className="px-4 py-3 font-medium">Scope</th>
+          {tokenMetrics.map(([label]) => (
+            <th className="px-4 py-3 font-medium" key={label}>
+              {label}
+            </th>
+          ))}
+          <th className="px-4 py-3 font-medium">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {iterations.map((iteration) => (
+          <tr className="border-slate-200 border-t" key={iteration.id}>
+            <td className="px-4 py-3 font-medium text-slate-950">
+              Iteration {iteration.n}
+            </td>
+            {tokenMetrics.map(([label, metric]) => (
+              <td className="px-4 py-3 text-slate-700" key={label}>
+                {formatTokens(iteration[metric])}
+              </td>
+            ))}
+            <td className="px-4 py-3 text-slate-700">
+              {formatTokens(totalIterationTokens(iteration))}
+            </td>
+          </tr>
+        ))}
+        <tr className="border-slate-200 border-t bg-slate-50">
+          <td className="px-4 py-3 font-medium text-slate-950">Run total</td>
+          {tokenMetrics.map(([label, metric]) => (
+            <td className="px-4 py-3 text-slate-700" key={label}>
+              {formatTokens(sumTokens(iterations, metric))}
+            </td>
+          ))}
+          <td className="px-4 py-3 text-slate-700">
+            {formatTokens(
+              tokenMetrics
+                .map(([, metric]) => sumTokens(iterations, metric))
+                .reduce<number | null>(
+                  (sum, value) => (value === null ? sum : (sum ?? 0) + value),
+                  null,
+                ),
+            )}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+);
+
+const EventTimeline = ({
+  events,
+  iterations,
+}: {
+  events: EventListItem[];
+  iterations: IterationListItem[];
+}) => {
+  if (events.length === 0) {
+    return <EmptyState>No Events have been captured for this Run.</EmptyState>;
+  }
+
+  if (iterations.length === 0) {
+    return (
+      <ol className="flex flex-col gap-3">
+        {events.map((event) => (
+          <EventRow event={event} key={event.id} />
+        ))}
+      </ol>
+    );
+  }
+
+  const eventsByIterationId = new Map(
+    iterations.map((iteration) => [iteration.id, [] as EventListItem[]]),
+  );
+  const iterationsByNumber = new Map(
+    iterations.map((iteration) => [iteration.n, iteration.id]),
+  );
+  const unassignedEvents: EventListItem[] = [];
+
+  for (const event of events) {
+    const iterationId =
+      event.iterationId ??
+      iterationsByNumber.get(eventIterationNumber(event) ?? Number.NaN);
+    const iterationEvents = iterationId
+      ? eventsByIterationId.get(iterationId)
+      : undefined;
+
+    if (iterationEvents) {
+      iterationEvents.push(event);
+    } else {
+      unassignedEvents.push(event);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {iterations.map((iteration) => (
+        <section className="flex flex-col gap-3" key={iteration.id}>
+          <div className="flex flex-wrap items-center gap-3 border-slate-200 border-l-4 bg-slate-50 px-4 py-3 text-sm">
+            <span className="font-medium text-slate-950">
+              Iteration {iteration.n}/{iterations.length}
+            </span>
+            <span className="text-slate-500">
+              {formatDateTime(iteration.startedAt)} -{" "}
+              {formatDateTime(iteration.endedAt)}
+            </span>
+          </div>
+          {(eventsByIterationId.get(iteration.id) ?? []).length === 0 ? (
+            <EmptyState>No Events captured for this iteration.</EmptyState>
+          ) : (
+            <ol className="flex flex-col gap-3">
+              {(eventsByIterationId.get(iteration.id) ?? []).map((event) => (
+                <EventRow event={event} key={event.id} />
+              ))}
+            </ol>
+          )}
+        </section>
+      ))}
+      {unassignedEvents.length > 0 ? (
+        <section className="flex flex-col gap-3">
+          <div className="border-slate-200 border-l-4 bg-slate-50 px-4 py-3 font-medium text-slate-950 text-sm">
+            Unassigned Events
+          </div>
+          <ol className="flex flex-col gap-3">
+            {unassignedEvents.map((event) => (
+              <EventRow event={event} key={event.id} />
+            ))}
+          </ol>
+        </section>
+      ) : null}
+    </div>
+  );
+};
+
 export function RunDetailPage({
   run,
+  iterations,
   events,
 }: {
   run: Run;
+  iterations: IterationListItem[];
   events: EventListItem[];
 }) {
   return (
@@ -268,28 +469,8 @@ export function RunDetailPage({
           </div>
         </div>
       </div>
-      {events.length === 0 ? (
-        <EmptyState>No Events have been captured for this Run.</EmptyState>
-      ) : (
-        <ol className="flex flex-col gap-3">
-          {events.map((event) => (
-            <li
-              className="rounded-md border border-slate-200 bg-white p-4"
-              key={event.id}
-            >
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <Status value={event.type} />
-                <span className="text-slate-500">
-                  #{event.sequenceNumber} - {formatDateTime(event.timestamp)}
-                </span>
-              </div>
-              <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-slate-50 p-3 text-slate-800 text-sm">
-                {eventBody(event)}
-              </pre>
-            </li>
-          ))}
-        </ol>
-      )}
+      <TokenPanel iterations={iterations} />
+      <EventTimeline events={events} iterations={iterations} />
     </PageShell>
   );
 }
