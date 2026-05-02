@@ -17,14 +17,14 @@ import {
   listEventsForRun,
   listRuns,
 } from "./queries";
-import { applyDatabaseSchema } from "./setup";
+import { applyDatabaseMigrations } from "./setup";
 
 describe("Hub db queries", () => {
   let db: HubDatabase;
 
   beforeEach(async () => {
     db = createInMemoryHubDatabase();
-    await applyDatabaseSchema(db);
+    await applyDatabaseMigrations(db);
   });
 
   afterEach(async () => {

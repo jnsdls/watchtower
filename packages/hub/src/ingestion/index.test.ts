@@ -6,7 +6,7 @@ import {
   createRun,
   listEventsForRun,
 } from "../db/queries";
-import { applyDatabaseSchema } from "../db/setup";
+import { applyDatabaseMigrations } from "../db/setup";
 import { EventBatchValidationError, ingestEventBatch } from "./index";
 
 describe("Event ingestion", () => {
@@ -15,7 +15,7 @@ describe("Event ingestion", () => {
 
   beforeEach(async () => {
     db = createInMemoryHubDatabase();
-    await applyDatabaseSchema(db);
+    await applyDatabaseMigrations(db);
 
     const project = await createProject(db, {
       localPath: "/tmp/watchtower",
