@@ -23,43 +23,27 @@ export type HubPing =
       error?: string;
     };
 
-export type DetachedStartResult =
-  | {
-      status: "already-running";
-      pid: number;
-      url: string;
-      logPath: string;
-    }
-  | {
-      status: "started";
-      pid: number;
-      url: string;
-      logPath: string;
-    };
+export type DetachedStartResult = {
+  status: "already-running" | "started";
+  pid: number;
+  url: string;
+  logPath: string;
+};
 
 export type StopHubResult =
   | { status: "not-running" }
   | { status: "stale"; pid: number }
   | { status: "stopped"; pid: number };
 
-export type HubStatus = {
-  reachable: boolean;
-  url: string;
-  version?: string;
-  error?: string;
-};
+export type HubStatus =
+  | { reachable: true; url: string; version: string }
+  | { reachable: false; url: string; error?: string };
 
-export type EnsureHubResult =
-  | {
-      status: "already-running";
-      url: string;
-      version: string;
-    }
-  | {
-      status: "started";
-      url: string;
-      version: string;
-    };
+export type EnsureHubResult = {
+  status: "already-running" | "started";
+  url: string;
+  version: string;
+};
 
 type DetachedProcess = {
   pid?: number;
@@ -84,6 +68,8 @@ const defaultPort = 7777;
 const defaultBindAddress = "127.0.0.1";
 const defaultReadinessTimeoutMs = 30_000;
 const defaultReadinessIntervalMs = 250;
+const stopPollIntervalMs = 100;
+const stopMaxAttempts = 40;
 
 const packageRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -346,13 +332,13 @@ export const stopDetachedHub = async (
 
   signalProcess(existingPid, "SIGTERM");
 
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  for (let attempt = 0; attempt < stopMaxAttempts; attempt += 1) {
     if (!processRunning(existingPid)) {
       await clearPid(config.pidPath);
       return { status: "stopped", pid: existingPid };
     }
 
-    await wait(100);
+    await wait(stopPollIntervalMs);
   }
 
   throw new Error(`Timed out waiting for Hub process ${existingPid} to stop.`);
@@ -431,14 +417,22 @@ export const openHub = async (
 };
 
 const openUrl = async (url: string) => {
-  const platform = process.platform;
-  const command =
-    platform === "darwin" ? "open" : platform === "win32" ? "cmd" : "xdg-open";
-  const args = platform === "win32" ? ["/c", "start", "", url] : [url];
+  const { command, args } = openUrlCommand(url);
   const child = spawn(command, args, {
     detached: true,
     stdio: "ignore",
   });
 
   child.unref();
+};
+
+const openUrlCommand = (url: string) => {
+  switch (process.platform) {
+    case "darwin":
+      return { command: "open", args: [url] };
+    case "win32":
+      return { command: "cmd", args: ["/c", "start", "", url] };
+    default:
+      return { command: "xdg-open", args: [url] };
+  }
 };
