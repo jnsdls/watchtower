@@ -15,22 +15,13 @@ export type RunnerOptions = {
   readonly stderr?: NodeJS.WritableStream;
 };
 
-const isBunRuntime = () => typeof Bun !== "undefined";
-
 export const detectRuntime = (): RuntimeName =>
-  isBunRuntime() ? "bun" : "node";
+  typeof Bun === "undefined" ? "node" : "bun";
 
-const cliSourceDirUrl = new URL(".", import.meta.url);
-
-const getRegisterPath = (runtime: RuntimeName) =>
-  runtime === "bun"
-    ? new URL("./bun-loader-register.ts", cliSourceDirUrl)
-    : new URL("./node-loader-register.ts", cliSourceDirUrl);
-
-const getRunnerEntryPath = () => new URL("./runner-entry.ts", cliSourceDirUrl);
-
-const getRealSandcastleUrl = (env: NodeJS.ProcessEnv) =>
-  env.WATCHTOWER_SANDCASTLE_URL ?? import.meta.resolve("@ai-hero/sandcastle");
+const bunRegisterUrl = new URL("./bun-loader-register.ts", import.meta.url);
+const nodeRegisterUrl = new URL("./node-loader-register.ts", import.meta.url);
+const runnerEntryUrl = new URL("./runner-entry.ts", import.meta.url);
+const wrapperRuntimeUrl = new URL("./loader-runtime.ts", import.meta.url).href;
 
 const createBunTransformedEntry = async (
   mainPath: string,
@@ -49,8 +40,10 @@ const createBunTransformedEntry = async (
   await writeFile(
     wrapperPath,
     createWrappedSandcastleModuleSource({
-      realSandcastleUrl: getRealSandcastleUrl(env),
-      wrapperRuntimeUrl: new URL("./loader-runtime.ts", cliSourceDirUrl).href,
+      realSandcastleUrl:
+        env.WATCHTOWER_SANDCASTLE_URL ??
+        import.meta.resolve("@ai-hero/sandcastle"),
+      wrapperRuntimeUrl,
     }),
   );
   await writeFile(entryPath, transformedSource);
@@ -107,11 +100,7 @@ export const runWithLoader = async (
     try {
       return await runChild(
         "bun",
-        [
-          "--preload",
-          fileURLToPath(getRegisterPath("bun")),
-          bunEntry.entryPath,
-        ],
+        ["--preload", fileURLToPath(bunRegisterUrl), bunEntry.entryPath],
         { cwd, stderr, stdout },
         env,
       );
@@ -128,8 +117,8 @@ export const runWithLoader = async (
     [
       "--experimental-strip-types",
       "--import",
-      pathToFileURL(fileURLToPath(getRegisterPath("node"))).href,
-      fileURLToPath(getRunnerEntryPath()),
+      nodeRegisterUrl.href,
+      fileURLToPath(runnerEntryUrl),
     ],
     { cwd, stderr, stdout },
     env,

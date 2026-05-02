@@ -1,9 +1,5 @@
 import { type SandcastleModule, wrapSandcastleModule } from "./wrapper.ts";
 
-const log = (message: string) => {
-  console.error(message);
-};
-
 export const createLoaderHubClient = () => ({
   registerRunStart: () => crypto.randomUUID(),
   recordRunEvent: () => {},
@@ -17,7 +13,7 @@ export const wrapForLoader = <TModule extends SandcastleModule>(
   wrapSandcastleModule(realModule, {
     hubClient: createLoaderHubClient(),
     logCall: (call) => {
-      log(
+      console.error(
         JSON.stringify({
           source: "watchtower",
           event: "sandcastle-call",
