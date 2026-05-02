@@ -15,6 +15,7 @@ import {
   getRun,
   getTask,
   listEventsForRun,
+  listIterationsForRun,
   listJobsForProjectSummary,
   listProjectsByRecentActivity,
   listRuns,
@@ -105,6 +106,9 @@ describe("Hub db queries", () => {
       n: 1,
       inputTokens: null,
     });
+    await expect(listIterationsForRun(db, run.id)).resolves.toMatchObject([
+      { id: iteration.id, n: 1 },
+    ]);
     await expect(listEventsForRun(db, run.id)).resolves.toMatchObject([
       {
         id: event?.id,

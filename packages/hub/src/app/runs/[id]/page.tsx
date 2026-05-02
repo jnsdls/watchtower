@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { RunDetailPage } from "../../../dashboard/pages";
-import { getRun, listEventsForRun } from "../../../db/queries";
+import {
+  getRun,
+  listEventsForRun,
+  listIterationsForRun,
+} from "../../../db/queries";
 import { getHubDatabase } from "../../../db/runtime";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +23,7 @@ export default async function RunPage({
   }
 
   const events = await listEventsForRun(db, id);
+  const iterations = await listIterationsForRun(db, id);
 
-  return <RunDetailPage events={events} run={run} />;
+  return <RunDetailPage events={events} iterations={iterations} run={run} />;
 }
