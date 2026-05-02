@@ -249,29 +249,30 @@ const tokenMetrics = [
 
 type TokenMetricKey = (typeof tokenMetrics)[number][1];
 
-const sumTokens = (iterations: IterationListItem[], metric: TokenMetricKey) => {
-  const values = iterations
-    .map((iteration) => iteration[metric])
-    .filter((value): value is number => value !== null);
-
-  if (values.length === 0) {
-    return null;
+const sumNonNull = (values: (number | null)[]): number | null => {
+  let total: number | null = null;
+  for (const value of values) {
+    if (value !== null) {
+      total = (total ?? 0) + value;
+    }
   }
-
-  return values.reduce((sum, value) => sum + value, 0);
+  return total;
 };
 
-const totalIterationTokens = (iteration: IterationListItem) => {
-  const values = tokenMetrics
-    .map(([, metric]) => iteration[metric])
-    .filter((value): value is number => value !== null);
+const sumIterationTokens = (
+  iterations: IterationListItem[],
+  metric: TokenMetricKey,
+) => sumNonNull(iterations.map((iteration) => iteration[metric]));
 
-  if (values.length === 0) {
-    return null;
-  }
+const totalIterationTokens = (iteration: IterationListItem) =>
+  sumNonNull(tokenMetrics.map(([, metric]) => iteration[metric]));
 
-  return values.reduce((sum, value) => sum + value, 0);
-};
+const totalRunTokens = (iterations: IterationListItem[]) =>
+  sumNonNull(
+    iterations.flatMap((iteration) =>
+      tokenMetrics.map(([, metric]) => iteration[metric]),
+    ),
+  );
 
 const eventIterationNumber = (event: EventListItem) => {
   const payload = event.payload as { iteration?: unknown };
@@ -279,10 +280,7 @@ const eventIterationNumber = (event: EventListItem) => {
 };
 
 const EventRow = ({ event }: { event: EventListItem }) => (
-  <li
-    className="rounded-md border border-slate-200 bg-white p-4"
-    key={event.id}
-  >
+  <li className="rounded-md border border-slate-200 bg-white p-4">
     <div className="flex flex-wrap items-center gap-3 text-sm">
       <Status value={event.type} />
       <span className="text-slate-500">
@@ -332,18 +330,11 @@ const TokenPanel = ({ iterations }: { iterations: IterationListItem[] }) => (
           <td className="px-4 py-3 font-medium text-slate-950">Run total</td>
           {tokenMetrics.map(([label, metric]) => (
             <td className="px-4 py-3 text-slate-700" key={label}>
-              {formatTokens(sumTokens(iterations, metric))}
+              {formatTokens(sumIterationTokens(iterations, metric))}
             </td>
           ))}
           <td className="px-4 py-3 text-slate-700">
-            {formatTokens(
-              tokenMetrics
-                .map(([, metric]) => sumTokens(iterations, metric))
-                .reduce<number | null>(
-                  (sum, value) => (value === null ? sum : (sum ?? 0) + value),
-                  null,
-                ),
-            )}
+            {formatTokens(totalRunTokens(iterations))}
           </td>
         </tr>
       </tbody>
@@ -372,18 +363,21 @@ const EventTimeline = ({
     );
   }
 
-  const eventsByIterationId = new Map(
-    iterations.map((iteration) => [iteration.id, [] as EventListItem[]]),
+  const eventsByIterationId = new Map<string, EventListItem[]>(
+    iterations.map((iteration) => [iteration.id, []]),
   );
-  const iterationsByNumber = new Map(
+  const iterationIdByNumber = new Map(
     iterations.map((iteration) => [iteration.n, iteration.id]),
   );
   const unassignedEvents: EventListItem[] = [];
 
   for (const event of events) {
+    const payloadIterationNumber = eventIterationNumber(event);
     const iterationId =
       event.iterationId ??
-      iterationsByNumber.get(eventIterationNumber(event) ?? Number.NaN);
+      (payloadIterationNumber === null
+        ? undefined
+        : iterationIdByNumber.get(payloadIterationNumber));
     const iterationEvents = iterationId
       ? eventsByIterationId.get(iterationId)
       : undefined;
@@ -397,28 +391,31 @@ const EventTimeline = ({
 
   return (
     <div className="flex flex-col gap-5">
-      {iterations.map((iteration) => (
-        <section className="flex flex-col gap-3" key={iteration.id}>
-          <div className="flex flex-wrap items-center gap-3 border-slate-200 border-l-4 bg-slate-50 px-4 py-3 text-sm">
-            <span className="font-medium text-slate-950">
-              Iteration {iteration.n}/{iterations.length}
-            </span>
-            <span className="text-slate-500">
-              {formatDateTime(iteration.startedAt)} -{" "}
-              {formatDateTime(iteration.endedAt)}
-            </span>
-          </div>
-          {(eventsByIterationId.get(iteration.id) ?? []).length === 0 ? (
-            <EmptyState>No Events captured for this iteration.</EmptyState>
-          ) : (
-            <ol className="flex flex-col gap-3">
-              {(eventsByIterationId.get(iteration.id) ?? []).map((event) => (
-                <EventRow event={event} key={event.id} />
-              ))}
-            </ol>
-          )}
-        </section>
-      ))}
+      {iterations.map((iteration) => {
+        const iterationEvents = eventsByIterationId.get(iteration.id) ?? [];
+        return (
+          <section className="flex flex-col gap-3" key={iteration.id}>
+            <div className="flex flex-wrap items-center gap-3 border-slate-200 border-l-4 bg-slate-50 px-4 py-3 text-sm">
+              <span className="font-medium text-slate-950">
+                Iteration {iteration.n}/{iterations.length}
+              </span>
+              <span className="text-slate-500">
+                {formatDateTime(iteration.startedAt)} -{" "}
+                {formatDateTime(iteration.endedAt)}
+              </span>
+            </div>
+            {iterationEvents.length === 0 ? (
+              <EmptyState>No Events captured for this iteration.</EmptyState>
+            ) : (
+              <ol className="flex flex-col gap-3">
+                {iterationEvents.map((event) => (
+                  <EventRow event={event} key={event.id} />
+                ))}
+              </ol>
+            )}
+          </section>
+        );
+      })}
       {unassignedEvents.length > 0 ? (
         <section className="flex flex-col gap-3">
           <div className="border-slate-200 border-l-4 bg-slate-50 px-4 py-3 font-medium text-slate-950 text-sm">
