@@ -1,1 +1,1 @@
-export const runnerPackageName = "@watchtower/cli";
+export const cliPackageName = "@watchtower/cli";
