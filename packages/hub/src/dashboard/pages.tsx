@@ -177,28 +177,20 @@ const JobGantt = ({
   runs: RunListItem[];
   tasks: TaskListItem[];
 }) => {
-  const latestObservedEnd =
-    maxDate(
-      job.endedAt,
-      ...runs.map((run) => run.endedAt),
-      ...runs.map((run) => run.startedAt),
-    ) ?? fallbackTimelineEnd(job.startedAt);
-  const hasRunningRun = runs.some((run) => run.endedAt === null);
-  const timelineEnd =
-    maxDate(latestObservedEnd, hasRunningRun ? new Date() : null) ??
-    fallbackTimelineEnd(job.startedAt);
-  const finalTimelineEnd =
-    timelineEnd <= job.startedAt
-      ? fallbackTimelineEnd(job.startedAt)
-      : timelineEnd;
-  const spanMs = Math.max(
-    1,
-    finalTimelineEnd.getTime() - job.startedAt.getTime(),
+  const observedEnd = maxDate(
+    job.endedAt,
+    ...runs.map((run) => run.endedAt),
+    runs.some((run) => run.endedAt === null) ? new Date() : null,
   );
+  const timelineEnd =
+    observedEnd && observedEnd > job.startedAt
+      ? observedEnd
+      : fallbackTimelineEnd(job.startedAt);
+  const spanMs = timelineEnd.getTime() - job.startedAt.getTime();
   const { lanes, modeLabel } = buildGanttLanes({
     runs,
     tasks,
-    timelineEnd: finalTimelineEnd,
+    timelineEnd,
   });
 
   return (
@@ -209,7 +201,7 @@ const JobGantt = ({
           <p className="text-slate-500 text-sm">{modeLabel}</p>
         </div>
         <div className="text-slate-500 text-sm">
-          {formatDateTime(job.startedAt)} - {formatDateTime(finalTimelineEnd)}
+          {formatDateTime(job.startedAt)} - {formatDateTime(timelineEnd)}
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -219,13 +211,15 @@ const JobGantt = ({
             <div className="relative px-4 py-3">
               <div className="flex justify-between">
                 <span>{formatDateTime(job.startedAt)}</span>
-                <span>{formatDateTime(finalTimelineEnd)}</span>
+                <span>{formatDateTime(timelineEnd)}</span>
               </div>
             </div>
           </div>
           {lanes.map((lane) => {
-            const trackCount =
-              Math.max(1, ...lane.runs.map((run) => run.track + 1)) || 1;
+            const trackCount = Math.max(
+              1,
+              ...lane.runs.map((run) => run.track + 1),
+            );
             const laneHeight = trackCount * 42 + 24;
 
             return (
@@ -253,7 +247,7 @@ const JobGantt = ({
                     </div>
                   ) : (
                     lane.runs.map((run) => {
-                      const runEnd = run.endedAt ?? finalTimelineEnd;
+                      const runEnd = run.endedAt ?? timelineEnd;
                       const left = percentBetween(
                         run.startedAt,
                         job.startedAt,
