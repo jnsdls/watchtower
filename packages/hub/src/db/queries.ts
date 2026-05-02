@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, gt } from "drizzle-orm";
 import type { HubQueryDatabase } from "./client";
 import {
   commits,
@@ -243,6 +243,16 @@ export const listEventsForRun = async (db: HubQueryDatabase, runId: string) =>
     .select()
     .from(events)
     .where(eq(events.runId, runId))
+    .orderBy(events.sequenceNumber);
+
+export const listEventsAfterSequence = async (
+  db: HubQueryDatabase,
+  sequenceNumber: number,
+) =>
+  db
+    .select()
+    .from(events)
+    .where(gt(events.sequenceNumber, sequenceNumber))
     .orderBy(events.sequenceNumber);
 
 export const createCommit = async (
