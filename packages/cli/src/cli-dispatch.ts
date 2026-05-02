@@ -94,16 +94,13 @@ export const dispatchCli = async (
   }
 
   if (command === "run") {
+    const args = argv.slice(1);
     let mainPath: string | undefined;
     let hubUrl: string | undefined;
     let open = true;
 
-    for (let index = 0; index < [subcommand, ...rest].length; index += 1) {
-      const argument = [subcommand, ...rest][index];
-
-      if (argument === undefined) {
-        continue;
-      }
+    for (let index = 0; index < args.length; index += 1) {
+      const argument = args[index];
 
       if (argument === "--no-open") {
         open = false;
@@ -111,7 +108,7 @@ export const dispatchCli = async (
       }
 
       if (argument === "--hub") {
-        const value = [subcommand, ...rest][index + 1];
+        const value = args[index + 1];
 
         if (value === undefined) {
           stderr(`Missing required value: --hub <url>\n\n${helpText}`);

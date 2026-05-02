@@ -12,13 +12,6 @@ import {
 
 export type JsonRecord = Record<string, unknown>;
 
-type TokenTotal = {
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheReadInputTokens: number | null;
-  cacheCreationInputTokens: number | null;
-};
-
 const millisecondsOrZero = (date: Date | null) => date?.getTime() ?? 0;
 
 const maxDate = (...dates: (Date | null)[]) =>
@@ -33,25 +26,6 @@ const maxDate = (...dates: (Date | null)[]) =>
 
     return latest;
   }, null);
-
-const addTokenTotal = (total: number | null, value: number | null) => {
-  if (value === null) {
-    return total;
-  }
-
-  return (total ?? 0) + value;
-};
-
-const sumIterationTokens = (tokenTotal: TokenTotal) => {
-  const total = [
-    tokenTotal.inputTokens,
-    tokenTotal.outputTokens,
-    tokenTotal.cacheReadInputTokens,
-    tokenTotal.cacheCreationInputTokens,
-  ].reduce<number | null>(addTokenTotal, null);
-
-  return total;
-};
 
 const requireRow = <T>(row: T | undefined, entityName: string) => {
   if (!row) {
@@ -148,18 +122,23 @@ export const listJobsForProjectSummary = async (
   return jobRows.map((job) => {
     const jobRuns = runRows.filter((run) => run.jobId === job.id);
     const runIds = new Set(jobRuns.map((run) => run.id));
-    const totalTokens = iterationRows
+    const tokenValues = iterationRows
       .filter((iteration) => runIds.has(iteration.runId))
-      .reduce<number | null>(
-        (total, iteration) =>
-          addTokenTotal(total, sumIterationTokens(iteration)),
-        null,
-      );
+      .flatMap((iteration) => [
+        iteration.inputTokens,
+        iteration.outputTokens,
+        iteration.cacheReadInputTokens,
+        iteration.cacheCreationInputTokens,
+      ])
+      .filter((value): value is number => value !== null);
 
     return {
       ...job,
       runCount: jobRuns.length,
-      totalTokens,
+      totalTokens:
+        tokenValues.length === 0
+          ? null
+          : tokenValues.reduce((sum, value) => sum + value, 0),
     };
   });
 };
