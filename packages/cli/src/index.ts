@@ -10,4 +10,4 @@ export type {
   OpenCommand,
   RunCommand,
 } from "./cli-dispatch.ts";
-export { dispatchCli, getCliHelp } from "./cli-dispatch.ts";
+export { dispatchCli } from "./cli-dispatch.ts";

@@ -68,8 +68,6 @@ const createDefaultHandlers = (
   open: notImplemented("watchtower open", stderr),
 });
 
-export const getCliHelp = () => helpText;
-
 export const dispatchCli = async (
   argv: readonly string[],
   options: DispatchOptions = {},
