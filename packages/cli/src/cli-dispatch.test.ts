@@ -122,24 +122,4 @@ describe("cli-dispatch", () => {
     expect(output.join("\n")).toContain("watchtower open");
   });
 
-  it.each([
-    [["hub", "start"], "watchtower hub start is not implemented yet."],
-    [
-      ["hub", "start", "--detach"],
-      "watchtower hub start is not implemented yet.",
-    ],
-    [["hub", "stop"], "watchtower hub stop is not implemented yet."],
-    [["hub", "status"], "watchtower hub status is not implemented yet."],
-    [["open"], "watchtower open is not implemented yet."],
-  ])("uses a non-zero not implemented stub for %s", async (argv, expectedMessage) => {
-    const output: string[] = [];
-
-    await expect(
-      dispatchCli(argv, {
-        stderr: (message) => output.push(message),
-      }),
-    ).resolves.toBe(1);
-
-    expect(output).toEqual([expectedMessage]);
-  });
 });

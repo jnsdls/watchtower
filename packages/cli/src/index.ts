@@ -11,5 +11,23 @@ export type {
   RunCommand,
 } from "./cli-dispatch.ts";
 export { dispatchCli } from "./cli-dispatch.ts";
+export type {
+  DetachedStartResult,
+  EnsureHubResult,
+  HubConfig,
+  HubPing,
+  HubStatus,
+  StopHubResult,
+} from "./hub-bootstrap.ts";
+export {
+  ensureHubReachable,
+  getHubStatus,
+  openHub,
+  pingHub,
+  resolveHubConfig,
+  startHubDetached,
+  startHubForeground,
+  stopDetachedHub,
+} from "./hub-bootstrap.ts";
 export type { RunnerOptions, RuntimeName } from "./runner.ts";
 export { detectRuntime, runWithLoader } from "./runner.ts";
