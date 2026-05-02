@@ -2,6 +2,7 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
+    "jsx": "react-jsx",
     "module": "Preserve",
     "moduleDetection": "force",
     "moduleResolution": "Bundler",
@@ -16,5 +17,10 @@
     "types": ["bun", "vitest/globals"],
     "verbatimModuleSyntax": true
   },
-  "include": ["packages/**/*.ts", "tests/**/*.ts", ".sandcastle/**/*.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "tests/**/*.ts",
+    ".sandcastle/**/*.ts"
+  ]
 }
