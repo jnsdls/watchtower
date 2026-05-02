@@ -1,6 +1,6 @@
-import { extractPlan } from "../../../cli/src/plan-parser";
 import type { HubQueryDatabase } from "../db/client";
 import { createTask, findTaskForJobByExternalId, getRun } from "../db/queries";
+import { extractPlan } from "./plan-parser";
 
 export type PlannerExtractionLogger = {
   readonly error: (message: string) => void;
