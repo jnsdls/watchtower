@@ -10,6 +10,7 @@ const createHubClient = () => {
   const starts: RunStart[] = [];
   const events: unknown[] = [];
   const completes: unknown[] = [];
+  const failures: unknown[] = [];
   const plannerOutputs: unknown[] = [];
   const hubClient: HubClient = {
     registerRunStart: (start) => {
@@ -22,12 +23,15 @@ const createHubClient = () => {
     recordRunComplete: (complete) => {
       completes.push(complete);
     },
+    recordRunFailed: (failed) => {
+      failures.push(failed);
+    },
     recordPlannerOutput: (runId, stdout) => {
       plannerOutputs.push({ runId, stdout });
     },
   };
 
-  return { completes, events, hubClient, plannerOutputs, starts };
+  return { completes, events, failures, hubClient, plannerOutputs, starts };
 };
 
 describe("wrapper", () => {
@@ -160,6 +164,23 @@ describe("wrapper", () => {
     ).rejects.toBe("already canceled");
 
     expect(starts).toEqual([]);
+  });
+
+  it("marks a registered Run failed when sandcastle throws", async () => {
+    const { failures, hubClient } = createHubClient();
+    const error = new Error("agent failed");
+    const realModule = {
+      run: async (_options: SandcastleRunOptions) => {
+        throw error;
+      },
+    };
+    const wrapped = wrapSandcastleModule(realModule, { hubClient });
+
+    await expect(wrapped.run({ agent: "fake", name: "worker" })).rejects.toBe(
+      error,
+    );
+
+    expect(failures).toEqual([{ runId: "run-1", error }]);
   });
 
   it("wraps sandbox.run returned by createSandbox", async () => {

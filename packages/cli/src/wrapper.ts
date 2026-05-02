@@ -37,11 +37,25 @@ export type RunStart = {
   readonly optionsKeys: readonly string[];
   readonly configSnapshot: unknown;
   readonly abortController: AbortController;
+  readonly originalOptions?: SandcastleRunOptions;
+  readonly sandboxOptions?: object;
+  readonly telemetry?: {
+    readonly agentProvider: string;
+    readonly agentModel: string | null;
+    readonly sandboxProvider: string;
+    readonly branch: string | null;
+    readonly maxIterations: number | null;
+  };
 };
 
 export type RunComplete = {
   readonly runId: string;
   readonly result: SandcastleRunResult;
+};
+
+export type RunFailed = {
+  readonly runId: string;
+  readonly error: unknown;
 };
 
 export type HubClient = {
@@ -51,6 +65,7 @@ export type HubClient = {
     event: unknown,
   ) => void | Promise<void>;
   readonly recordRunComplete: (complete: RunComplete) => void | Promise<void>;
+  readonly recordRunFailed?: (failed: RunFailed) => void | Promise<void>;
   readonly recordPlannerOutput: (
     runId: string,
     stdout: string,
@@ -60,7 +75,7 @@ export type HubClient = {
 export type WrapSandcastleOptions = {
   readonly hubClient: HubClient;
   readonly logCall?: (call: WrappedCall) => void;
-  readonly snapshotConfig?: (options: object) => unknown;
+  readonly snapshotConfig?: (options: object) => unknown | Promise<unknown>;
 };
 
 const cloneJsonSafe = (value: unknown): unknown => {
@@ -123,6 +138,7 @@ const wrapRunFunction =
     realRun: (options: SandcastleRunOptions) => Promise<SandcastleRunResult>,
     functionName: "run" | "sandbox.run",
     options: WrapSandcastleOptions,
+    sandboxOptions?: object,
   ) =>
   async (runOptions: SandcastleRunOptions) => {
     const optionsKeys = getOptionsKeys(runOptions);
@@ -141,8 +157,11 @@ const wrapRunFunction =
       name: runOptions.name,
       optionsKeys,
       configSnapshot:
-        options.snapshotConfig?.(runOptions) ?? cloneJsonSafe(runOptions),
+        (await options.snapshotConfig?.(runOptions)) ??
+        cloneJsonSafe(runOptions),
       abortController,
+      originalOptions: runOptions,
+      sandboxOptions,
     });
 
     const nextOptions = withEventForwarding(
@@ -154,7 +173,15 @@ const wrapRunFunction =
       options.hubClient,
     );
 
-    const result = await realRun(nextOptions);
+    let result: SandcastleRunResult;
+
+    try {
+      result = await realRun(nextOptions);
+    } catch (error) {
+      await options.hubClient.recordRunFailed?.({ runId, error });
+      throw error;
+    }
+
     await options.hubClient.recordRunComplete({ runId, result });
 
     if (runOptions.name === "planner" && typeof result.stdout === "string") {
@@ -167,6 +194,7 @@ const wrapRunFunction =
 const wrapSandbox = (
   sandbox: SandcastleSandbox,
   options: WrapSandcastleOptions,
+  sandboxOptions: object,
 ): SandcastleSandbox => {
   if (typeof sandbox.run !== "function") {
     return sandbox;
@@ -174,7 +202,12 @@ const wrapSandbox = (
 
   return {
     ...sandbox,
-    run: wrapRunFunction(sandbox.run.bind(sandbox), "sandbox.run", options),
+    run: wrapRunFunction(
+      sandbox.run.bind(sandbox),
+      "sandbox.run",
+      options,
+      sandboxOptions,
+    ),
   };
 };
 
@@ -201,7 +234,7 @@ export const wrapSandcastleModule = <TModule extends SandcastleModule>(
         throw new Error("sandcastle.createSandbox returned undefined");
       }
 
-      return wrapSandbox(sandbox, options);
+      return wrapSandbox(sandbox, options, createOptions);
     };
   }
 

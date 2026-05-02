@@ -2,8 +2,17 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  ensureHubReachable,
+  type HubConfig,
+  pingHub,
+  resolveHubConfig,
+} from "./hub-bootstrap.ts";
+import { completeWatchtowerJob, startWatchtowerJob } from "./hub-client.ts";
 import { createWrappedSandcastleModuleSource } from "./loader-module-source.ts";
+import { identifyProject } from "./project-id.ts";
 
 export type RuntimeName = "bun" | "node";
 
@@ -11,6 +20,8 @@ export type RunnerOptions = {
   readonly runtime?: RuntimeName;
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
+  readonly hubUrl?: string;
+  readonly stdin?: NodeJS.ReadableStream;
   readonly stdout?: NodeJS.WritableStream;
   readonly stderr?: NodeJS.WritableStream;
 };
@@ -22,6 +33,110 @@ const bunRegisterUrl = new URL("./bun-loader-register.ts", import.meta.url);
 const nodeRegisterUrl = new URL("./node-loader-register.ts", import.meta.url);
 const runnerEntryUrl = new URL("./runner-entry.ts", import.meta.url);
 const wrapperRuntimeUrl = new URL("./loader-runtime.ts", import.meta.url).href;
+const minimumSandcastleVersion = "0.5.7";
+
+const parseVersion = (version: string) =>
+  version
+    .replace(/^[^\d]*/, "")
+    .split(".")
+    .map((part) => Number.parseInt(part, 10));
+
+const isVersionAtLeast = (version: string, minimum: string) => {
+  const actual = parseVersion(version);
+  const floor = parseVersion(minimum);
+
+  for (let index = 0; index < floor.length; index += 1) {
+    const actualPart = actual[index] ?? 0;
+    const floorPart = floor[index] ?? 0;
+
+    if (actualPart > floorPart) {
+      return true;
+    }
+
+    if (actualPart < floorPart) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const findPackageJson = async (moduleUrl: string) => {
+  let current = dirname(fileURLToPath(moduleUrl));
+
+  for (;;) {
+    const packageJsonPath = join(current, "package.json");
+
+    try {
+      return JSON.parse(await readFile(packageJsonPath, "utf8")) as {
+        version?: unknown;
+      };
+    } catch {
+      const next = dirname(current);
+
+      if (next === current) {
+        throw new Error("Could not find @ai-hero/sandcastle package.json.");
+      }
+
+      current = next;
+    }
+  }
+};
+
+export const assertSupportedSandcastleVersion = async (
+  env: NodeJS.ProcessEnv = process.env,
+) => {
+  const sandcastleUrl =
+    env.WATCHTOWER_SANDCASTLE_URL ?? import.meta.resolve("@ai-hero/sandcastle");
+  const packageJson = await findPackageJson(sandcastleUrl);
+  const version = packageJson.version;
+
+  if (typeof version !== "string") {
+    throw new Error("Could not determine @ai-hero/sandcastle version.");
+  }
+
+  if (!isVersionAtLeast(version, minimumSandcastleVersion)) {
+    throw new Error(
+      `@ai-hero/sandcastle ${version} is too old for Watchtower telemetry. ` +
+        `Install @ai-hero/sandcastle >=${minimumSandcastleVersion} (the IterationUsage floor from sandcastle commit 148905b).`,
+    );
+  }
+};
+
+const promptToStartHub = async (
+  config: HubConfig,
+  input: NodeJS.ReadableStream,
+  output: NodeJS.WritableStream,
+) => {
+  const prompt = createInterface({ input, output });
+
+  try {
+    const answer = await prompt.question(
+      `Hub unreachable at ${config.url}. Start a detached Hub? [Y/n] `,
+    );
+    return !answer.trim().toLowerCase().startsWith("n");
+  } finally {
+    prompt.close();
+  }
+};
+
+const ensureHubReachableForRun = async (
+  config: HubConfig,
+  input: NodeJS.ReadableStream,
+  output: NodeJS.WritableStream,
+) => {
+  const initial = await pingHub(config);
+
+  if (initial.reachable) {
+    return initial;
+  }
+
+  if (!(await promptToStartHub(config, input, output))) {
+    throw new Error(`Hub unreachable at ${config.url}.`);
+  }
+
+  return ensureHubReachable(config);
+};
 
 const createBunTransformedEntry = async (
   mainPath: string,
@@ -88,21 +203,72 @@ export const runWithLoader = async (
   const cwd = options.cwd ?? process.cwd();
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
+  const stdin = options.stdin ?? process.stdin;
   const absoluteMainPath = resolve(cwd, mainPath);
-  const env = {
+  const baseEnv = {
     ...(options.env ?? process.env),
+  };
+  if (baseEnv.WATCHTOWER_SKIP_SANDCASTLE_VERSION_CHECK !== "1") {
+    try {
+      await assertSupportedSandcastleVersion(baseEnv);
+    } catch (error) {
+      stderr.write(
+        `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      return 1;
+    }
+  }
+  const hubConfig = resolveHubConfig({ url: options.hubUrl }, baseEnv);
+  const telemetryDisabled = baseEnv.WATCHTOWER_TELEMETRY_DISABLED === "1";
+  let telemetryJobId = "";
+  const env = {
+    ...baseEnv,
+    WATCHTOWER_HUB_URL: hubConfig.url,
+    WATCHTOWER_JOB_ID: telemetryDisabled
+      ? ""
+      : await (async () => {
+          try {
+            await ensureHubReachableForRun(hubConfig, stdin, stderr);
+            telemetryJobId = await startWatchtowerJob({
+              hubUrl: hubConfig.url,
+              project: await identifyProject(cwd),
+            });
+            return telemetryJobId;
+          } catch (error) {
+            stderr.write(
+              `Watchtower telemetry disabled: ${
+                error instanceof Error ? error.message : String(error)
+              }\n`,
+            );
+            return "";
+          }
+        })(),
     WATCHTOWER_MAIN_URL: pathToFileURL(absoluteMainPath).href,
+  };
+
+  const completeJob = async (exitCode: number) => {
+    if (telemetryJobId !== "") {
+      try {
+        await completeWatchtowerJob(hubConfig.url, telemetryJobId, exitCode);
+      } catch {
+        // Telemetry failures must not change the user's Runner exit code.
+      }
+    }
+
+    return exitCode;
   };
 
   if (runtime === "bun") {
     const bunEntry = await createBunTransformedEntry(absoluteMainPath, env);
 
     try {
-      return await runChild(
-        "bun",
-        ["--preload", fileURLToPath(bunRegisterUrl), bunEntry.entryPath],
-        { cwd, stderr, stdout },
-        env,
+      return await completeJob(
+        await runChild(
+          "bun",
+          ["--preload", fileURLToPath(bunRegisterUrl), bunEntry.entryPath],
+          { cwd, stderr, stdout },
+          env,
+        ),
       );
     } finally {
       await Promise.all([
@@ -112,15 +278,17 @@ export const runWithLoader = async (
     }
   }
 
-  return runChild(
-    "node",
-    [
-      "--experimental-strip-types",
-      "--import",
-      nodeRegisterUrl.href,
-      fileURLToPath(runnerEntryUrl),
-    ],
-    { cwd, stderr, stdout },
-    env,
+  return completeJob(
+    await runChild(
+      "node",
+      [
+        "--experimental-strip-types",
+        "--import",
+        nodeRegisterUrl.href,
+        fileURLToPath(runnerEntryUrl),
+      ],
+      { cwd, stderr, stdout },
+      env,
+    ),
   );
 };

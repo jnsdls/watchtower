@@ -58,6 +58,37 @@ export const createProject = async (
 export const getProject = async (db: HubQueryDatabase, id: string) =>
   db.query.projects.findFirst({ where: eq(projects.id, id) });
 
+export const findOrCreateProject = async (
+  db: HubQueryDatabase,
+  input: {
+    gitRemoteUrl?: string | null;
+    localPath?: string | null;
+    displayName: string;
+  },
+) => {
+  if (input.gitRemoteUrl) {
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.gitRemoteUrl, input.gitRemoteUrl),
+    });
+
+    if (project) {
+      return project;
+    }
+  }
+
+  if (input.localPath) {
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.localPath, input.localPath),
+    });
+
+    if (project) {
+      return project;
+    }
+  }
+
+  return createProject(db, input);
+};
+
 export const listProjectsByRecentActivity = async (db: HubQueryDatabase) => {
   const projectRows = await db.select().from(projects);
   const jobRows = await db.select().from(jobs);
@@ -92,6 +123,7 @@ export const listProjectsByRecentActivity = async (db: HubQueryDatabase) => {
 export const createJob = async (
   db: HubQueryDatabase,
   input: {
+    id?: string;
     projectId: string;
     startedAt: Date;
     endedAt?: Date | null;
@@ -106,6 +138,22 @@ export const createJob = async (
 
 export const getJob = async (db: HubQueryDatabase, id: string) =>
   db.query.jobs.findFirst({ where: eq(jobs.id, id) });
+
+export const updateJobComplete = async (
+  db: HubQueryDatabase,
+  input: { id: string; endedAt: Date; status: string },
+) => {
+  const [job] = await db
+    .update(jobs)
+    .set({
+      endedAt: input.endedAt,
+      status: input.status,
+    })
+    .where(eq(jobs.id, input.id))
+    .returning();
+
+  return requireRow(job, "Job");
+};
 
 export const listJobsForProjectSummary = async (
   db: HubQueryDatabase,
@@ -163,6 +211,7 @@ export const getTask = async (db: HubQueryDatabase, id: string) =>
 export const createRun = async (
   db: HubQueryDatabase,
   input: {
+    id?: string;
     jobId: string;
     taskId?: string | null;
     name: string;
@@ -185,6 +234,32 @@ export const createRun = async (
 
 export const getRun = async (db: HubQueryDatabase, id: string) =>
   db.query.runs.findFirst({ where: eq(runs.id, id) });
+
+export const updateRunTelemetryComplete = async (
+  db: HubQueryDatabase,
+  input: {
+    id: string;
+    endedAt: Date;
+    status: string;
+    branch?: string | null;
+    completionSignal?: string | null;
+    errorMessage?: string | null;
+  },
+) => {
+  const [run] = await db
+    .update(runs)
+    .set({
+      endedAt: input.endedAt,
+      status: input.status,
+      branch: input.branch ?? null,
+      completionSignal: input.completionSignal ?? null,
+      errorMessage: input.errorMessage ?? null,
+    })
+    .where(eq(runs.id, input.id))
+    .returning();
+
+  return requireRow(run, "Run");
+};
 
 export const listRuns = async (db: HubQueryDatabase) =>
   db.select().from(runs).orderBy(desc(runs.startedAt));

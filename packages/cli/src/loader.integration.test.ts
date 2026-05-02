@@ -31,6 +31,7 @@ const writeFixture = async () => {
     JSON.stringify({
       name: "@ai-hero/sandcastle",
       type: "module",
+      version: "0.5.7",
       exports: {
         ".": "./index.mjs",
         "./sandboxes/docker": "./sandboxes/docker.mjs",
@@ -127,6 +128,7 @@ describe("loader", () => {
       env: {
         ...process.env,
         WATCHTOWER_SANDCASTLE_URL: fixture.realSandcastleUrl,
+        WATCHTOWER_TELEMETRY_DISABLED: "1",
       },
       runtime,
       stderr: stderr.stream,

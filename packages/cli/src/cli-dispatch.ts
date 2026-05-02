@@ -74,7 +74,7 @@ const createDefaultHandlers = (
       hubUrl: command.hubUrl,
       open: command.open,
     });
-    return runWithLoader(command.mainPath);
+    return runWithLoader(command.mainPath, { hubUrl: command.hubUrl });
   },
   hubStart: async (command) => {
     const config = resolveHubConfig();
