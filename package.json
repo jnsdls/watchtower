@@ -1,0 +1,23 @@
+{
+  "name": "watchtower",
+  "version": "0.0.0",
+  "description": "Visualization layer for sandcastle: a multi-run dashboard for parallel sandboxed AI coding agents.",
+  "homepage": "https://github.com/jnsdls/watchtower",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jnsdls/watchtower.git"
+  },
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sandcastle": "bun .sandcastle/main.ts"
+  },
+  "packageManager": "bun@1.3.12",
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "devDependencies": {
+    "@ai-hero/sandcastle": "^0.5.6",
+    "@types/bun": "^1.3.0"
+  }
+}
