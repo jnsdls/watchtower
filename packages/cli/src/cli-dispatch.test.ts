@@ -121,5 +121,4 @@ describe("cli-dispatch", () => {
     expect(output.join("\n")).toContain("watchtower hub status");
     expect(output.join("\n")).toContain("watchtower open");
   });
-
 });
