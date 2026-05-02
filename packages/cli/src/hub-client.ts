@@ -353,23 +353,6 @@ export const createWatchtowerHubClient = ({
     void poll();
   };
 
-  const postRunCanceled = async (canceled: RunCanceled) => {
-    await flush();
-    await post([
-      {
-        type: "run.completed",
-        runId: canceled.runId,
-        status: "canceled",
-        branch: null,
-        completionSignal: null,
-        commits: [],
-        errorMessage: null,
-        iterations: [],
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-  };
-
   return {
     flush,
     registerRunStart: async (start) => {
@@ -411,7 +394,20 @@ export const createWatchtowerHubClient = ({
     },
     recordRunCanceled: async (canceled: RunCanceled) => {
       stopCancelPoll(canceled.runId);
-      await postRunCanceled(canceled);
+      await flush();
+      await post([
+        {
+          type: "run.completed",
+          runId: canceled.runId,
+          status: "canceled",
+          branch: null,
+          completionSignal: null,
+          commits: [],
+          errorMessage: null,
+          iterations: [],
+          timestamp: new Date().toISOString(),
+        },
+      ]);
     },
     recordRunFailed: async (failed: RunFailed) => {
       stopCancelPoll(failed.runId);

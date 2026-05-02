@@ -253,6 +253,7 @@ export const runWithLoader = async (
     WATCHTOWER_MAIN_URL: pathToFileURL(absoluteMainPath).href,
   };
 
+  let wasCanceledBySignal = false;
   const completeJob = async (exitCode: number) => {
     const status = wasCanceledBySignal ? "canceled" : undefined;
 
@@ -271,9 +272,7 @@ export const runWithLoader = async (
 
     return exitCode;
   };
-  let wasCanceledBySignal = false;
   const uninstallSigintHandler = installSigintHandler({
-    abortActiveRuns: () => {},
     onFirstSignal: () => {
       wasCanceledBySignal = true;
     },

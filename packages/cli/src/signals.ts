@@ -5,7 +5,7 @@ type ProcessLike = {
 };
 
 export type SigintHandlerOptions = {
-  readonly abortActiveRuns: (reason: string) => void;
+  readonly abortActiveRuns?: (reason: string) => void;
   readonly onFirstSignal?: () => void;
   readonly exit?: (code: number) => void;
 };
@@ -25,7 +25,7 @@ export const createSigintHandler = ({
 
     didStartGracefulCancel = true;
     onFirstSignal?.();
-    abortActiveRuns("SIGINT");
+    abortActiveRuns?.("SIGINT");
   };
 };
 
