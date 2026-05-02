@@ -1,3 +1,5 @@
+import { runWithLoader } from "./runner.ts";
+
 export type RunCommand = {
   name: "run";
   mainPath: string;
@@ -61,7 +63,7 @@ const notImplemented =
 const createDefaultHandlers = (
   stderr: (message: string) => void,
 ): CliHandlers => ({
-  run: notImplemented("watchtower run", stderr),
+  run: (command) => runWithLoader(command.mainPath),
   hubStart: notImplemented("watchtower hub start", stderr),
   hubStop: notImplemented("watchtower hub stop", stderr),
   hubStatus: notImplemented("watchtower hub status", stderr),

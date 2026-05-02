@@ -123,7 +123,6 @@ describe("cli-dispatch", () => {
   });
 
   it.each([
-    [["run", ".sandcastle/main.ts"], "watchtower run is not implemented yet."],
     [["hub", "start"], "watchtower hub start is not implemented yet."],
     [
       ["hub", "start", "--detach"],

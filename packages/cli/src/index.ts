@@ -11,3 +11,5 @@ export type {
   RunCommand,
 } from "./cli-dispatch.ts";
 export { dispatchCli } from "./cli-dispatch.ts";
+export type { RunnerOptions, RuntimeName } from "./runner.ts";
+export { detectRuntime, runWithLoader } from "./runner.ts";
