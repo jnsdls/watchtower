@@ -73,7 +73,8 @@ describe("Dashboard pages", () => {
           externalId: "10",
           title: "Planner extraction",
           branch: "sandcastle/issue-10-planner-extraction",
-          status: "pending",
+          status: "in_progress",
+          failureCount: 0,
           createdAt: startedAt,
         },
       ],
@@ -209,7 +210,11 @@ describe("Dashboard pages", () => {
             externalId: "13",
             title: "Job-detail Gantt + swimlanes",
             branch: "sandcastle/issue-13-job-detail-gantt-swimlanes",
-            status: "pending",
+            // implementer succeeded + reviewer failed (sequential) →
+            // attempt aggregates to "failed", failureCount tracks the
+            // failed reviewer Run.
+            status: "failed",
+            failureCount: 1,
             createdAt: startedAt,
           },
         ]}

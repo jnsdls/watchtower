@@ -1,0 +1,1 @@
+ALTER TABLE "tasks" ADD COLUMN "failure_count" integer DEFAULT 0 NOT NULL;

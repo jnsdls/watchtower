@@ -83,13 +83,15 @@ describe("planner-extraction", () => {
         externalId: "10",
         title: "Planner extraction",
         branch: "sandcastle/issue-10-planner-extraction",
-        status: "pending",
+        status: "in_progress",
+        failureCount: 0,
       },
       {
         externalId: "11",
         title: "Gantt",
         branch: "sandcastle/issue-11-gantt",
         status: "pending",
+        failureCount: 0,
       },
     ]);
     await expect(getRun(db, implementerRunId)).resolves.toMatchObject({

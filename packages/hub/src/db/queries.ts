@@ -1,4 +1,4 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import type { HubQueryDatabase } from "./client";
 import {
   commits,
@@ -217,12 +217,60 @@ export const findTaskForJobByExternalId = async (
     where: and(eq(tasks.jobId, jobId), eq(tasks.externalId, externalId)),
   });
 
+export const findTaskForJobByBranch = async (
+  db: HubQueryDatabase,
+  jobId: string,
+  branch: string,
+) =>
+  db.query.tasks.findFirst({
+    where: and(eq(tasks.jobId, jobId), eq(tasks.branch, branch)),
+  });
+
 export const listTasksForJob = async (db: HubQueryDatabase, jobId: string) =>
   db
     .select()
     .from(tasks)
     .where(eq(tasks.jobId, jobId))
     .orderBy(tasks.externalId);
+
+export const updateTaskStatus = async (
+  db: HubQueryDatabase,
+  input: { id: string; status: string },
+) => {
+  await db
+    .update(tasks)
+    .set({ status: input.status })
+    .where(eq(tasks.id, input.id));
+};
+
+export const incrementTaskFailureCount = async (
+  db: HubQueryDatabase,
+  taskId: string,
+) => {
+  await db
+    .update(tasks)
+    .set({ failureCount: sql`${tasks.failureCount} + 1` })
+    .where(eq(tasks.id, taskId));
+};
+
+export const listOrphanRunsWithBranch = async (db: HubQueryDatabase) =>
+  db
+    .select()
+    .from(runs)
+    .where(and(isNull(runs.taskId), isNotNull(runs.branch)));
+
+export const setRunTaskId = async (
+  db: HubQueryDatabase,
+  input: { runId: string; taskId: string },
+) => {
+  await db
+    .update(runs)
+    .set({ taskId: input.taskId })
+    .where(eq(runs.id, input.runId));
+};
+
+export const listRunsForTask = async (db: HubQueryDatabase, taskId: string) =>
+  db.select().from(runs).where(eq(runs.taskId, taskId)).orderBy(runs.startedAt);
 
 export const createRun = async (
   db: HubQueryDatabase,

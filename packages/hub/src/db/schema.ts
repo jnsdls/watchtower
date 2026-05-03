@@ -50,6 +50,7 @@ export const tasks = pgTable(
     title: text("title").notNull(),
     branch: text("branch"),
     status: text("status").notNull(),
+    failureCount: integer("failure_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

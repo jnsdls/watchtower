@@ -7,7 +7,10 @@ import {
   createJob,
   createRun,
   findOrCreateProject,
+  findTaskForJobByBranch,
   findTaskForJobByExternalId,
+  getRun,
+  listRunsForJob,
   updateJobComplete,
   updateRunTelemetryComplete,
 } from "../db/queries";
@@ -15,6 +18,7 @@ import {
   extractTasksFromPlannerOutput,
   type PlannerExtractionLogger,
 } from "../planner-extraction";
+import { recomputeTaskStatus, recordRunFailureForTask } from "../task-status";
 
 const eventInputSchema = z.object({
   sequenceNumber: z.number().int().positive().optional(),
@@ -207,13 +211,22 @@ const ingestEvent = async (
       });
       return null;
     }
-    case "job.completed":
+    case "job.completed": {
+      // A Job is "failed" only when no Run inside it succeeded — otherwise
+      // the Job produced value and is "succeeded". Overrides the
+      // exit-code-derived status the CLI sends, since a top-level
+      // orchestration crash can still have produced useful Run output.
+      const jobRuns = await listRunsForJob(tx, event.jobId);
+      const status = jobRuns.some((run) => run.status === "succeeded")
+        ? "succeeded"
+        : "failed";
       await updateJobComplete(tx, {
         id: event.jobId,
         endedAt: event.timestamp,
-        status: event.status,
+        status,
       });
       return null;
+    }
     case "run.started": {
       const taskId = await taskIdForRunStart(tx, event);
 
@@ -231,9 +244,13 @@ const ingestEvent = async (
         status: "running",
         configSnapshot: event.configSnapshot,
       });
+      if (taskId) {
+        await recomputeTaskStatus(tx, taskId);
+      }
       return null;
     }
-    case "run.completed":
+    case "run.completed": {
+      const previous = await getRun(tx, event.runId);
       await updateRunTelemetryComplete(tx, {
         id: event.runId,
         endedAt: event.timestamp,
@@ -259,7 +276,14 @@ const ingestEvent = async (
       for (const commit of event.commits ?? []) {
         await createCommit(tx, { runId: event.runId, sha: commit.sha });
       }
+      if (previous?.taskId) {
+        if (event.status === "failed") {
+          await recordRunFailureForTask(tx, previous.taskId);
+        }
+        await recomputeTaskStatus(tx, previous.taskId);
+      }
       return null;
+    }
     case "run.event":
       return createEvent(tx, {
         runId: event.runId,
@@ -297,13 +321,26 @@ const taskIdForRunStart = async (
   tx: HubTransaction,
   event: z.infer<typeof runStartedEventSchema>,
 ) => {
+  // Explicit linkage wins: TASK_ID promptArg → matching Task.externalId.
   const externalId = taskIdFromConfigSnapshot(event.configSnapshot);
-  if (!externalId) {
-    return null;
+  if (externalId) {
+    const task = await findTaskForJobByExternalId(tx, event.jobId, externalId);
+    if (task) {
+      return task.id;
+    }
   }
 
-  const task = await findTaskForJobByExternalId(tx, event.jobId, externalId);
-  return task?.id ?? null;
+  // Implicit fallback: Run.branch → matching Task.branch in the same Job.
+  // Covers reviewer/merger Runs that share the implementer's sandbox+branch
+  // but don't repeat the TASK_ID promptArg.
+  if (event.branch) {
+    const task = await findTaskForJobByBranch(tx, event.jobId, event.branch);
+    if (task) {
+      return task.id;
+    }
+  }
+
+  return null;
 };
 
 const ingestRawEvent = (tx: HubTransaction, event: RawEventInput) =>
