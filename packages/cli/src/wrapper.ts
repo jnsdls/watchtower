@@ -1,7 +1,10 @@
+import { join } from "node:path";
+
 export type SandcastleRunOptions = {
   readonly name?: string;
   readonly logging?: {
     readonly type: string;
+    readonly path?: string;
     readonly onAgentStreamEvent?: (event: unknown) => void;
   };
   readonly signal?: AbortSignal;
@@ -128,25 +131,45 @@ const combineAbortSignals = (
   return controller.signal;
 };
 
+const defaultLogPath = (runId: string) =>
+  join(process.cwd(), ".sandcastle", "logs", `watchtower-${runId}.log`);
+
+// Watchtower captures Run output exclusively via sandcastle's
+// `onAgentStreamEvent`, which sandcastle only fires when
+// `logging.type === "file"`. Force file mode (overriding stdout/Clack TUI) so
+// the dashboard sees events even when the user's main.ts ships without a
+// `logging` option — watchtower replaces the TUI by design.
 const withEventForwarding = (
   options: SandcastleRunOptions,
   runId: string,
   hubClient: HubClient,
 ): SandcastleRunOptions => {
-  if (options.logging?.type !== "file") {
-    return options;
-  }
+  const userOnAgentStreamEvent =
+    options.logging?.type === "file"
+      ? options.logging.onAgentStreamEvent
+      : undefined;
 
-  const originalOnAgentStreamEvent = options.logging.onAgentStreamEvent;
+  const onAgentStreamEvent = (event: unknown) => {
+    void hubClient.recordRunEvent(runId, event);
+    userOnAgentStreamEvent?.(event);
+  };
+
+  if (options.logging?.type === "file") {
+    return {
+      ...options,
+      logging: {
+        ...options.logging,
+        onAgentStreamEvent,
+      },
+    };
+  }
 
   return {
     ...options,
     logging: {
-      ...options.logging,
-      onAgentStreamEvent: (event: unknown) => {
-        void hubClient.recordRunEvent(runId, event);
-        originalOnAgentStreamEvent?.(event);
-      },
+      type: "file",
+      path: defaultLogPath(runId),
+      onAgentStreamEvent,
     },
   };
 };

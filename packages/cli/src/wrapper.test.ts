@@ -112,6 +112,46 @@ describe("wrapper", () => {
     expect(userEvents).toEqual([{ text: "one" }, { text: "two" }]);
   });
 
+  it("forwards events when the user's main.ts omits logging entirely", async () => {
+    const { events, hubClient } = createHubClient();
+    const realModule = {
+      run: async (options: SandcastleRunOptions) => {
+        options.logging?.onAgentStreamEvent?.({ text: "one" });
+        options.logging?.onAgentStreamEvent?.({ text: "two" });
+        return { stdout: "done" };
+      },
+    };
+
+    const wrapped = wrapSandcastleModule(realModule, { hubClient });
+
+    await wrapped.run({ agent: "fake", name: "worker" });
+
+    expect(events).toEqual([
+      { runId: "run-1", event: { text: "one" } },
+      { runId: "run-1", event: { text: "two" } },
+    ]);
+  });
+
+  it("forwards events when the user's main.ts sets logging.type to stdout", async () => {
+    const { events, hubClient } = createHubClient();
+    const realModule = {
+      run: async (options: SandcastleRunOptions) => {
+        options.logging?.onAgentStreamEvent?.({ text: "one" });
+        return { stdout: "done" };
+      },
+    };
+
+    const wrapped = wrapSandcastleModule(realModule, { hubClient });
+
+    await wrapped.run({
+      agent: "fake",
+      logging: { type: "stdout" },
+      name: "worker",
+    });
+
+    expect(events).toEqual([{ runId: "run-1", event: { text: "one" } }]);
+  });
+
   it("captures the config snapshot at Run start, not completion", async () => {
     const { hubClient, starts } = createHubClient();
     const runOptions: SandcastleRunOptions = {
