@@ -140,7 +140,7 @@ export const ingestEventBatch = async (
   db: HubDatabase,
   input: EventBatchInput,
   options: IngestEventBatchOptions = {},
-): Promise<{ events: IngestedEvent[] }> => {
+): Promise<{ events: IngestedEvent[]; lifecycleCount: number }> => {
   const parsed = eventBatchSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -149,16 +149,22 @@ export const ingestEventBatch = async (
 
   return db.transaction(async (tx) => {
     const ingestedEvents: IngestedEvent[] = [];
+    let lifecycleCount = 0;
 
     for (const event of parsed.data) {
       const ingested = await ingestEvent(tx, event, options);
 
       if (ingested) {
         ingestedEvents.push(ingested);
+      } else {
+        // The event mutated DB state (job/run lifecycle, planner output)
+        // without producing a stream Event. The route handler uses this
+        // count to fire `eventBroadcaster.pulse()` so dashboards refresh.
+        lifecycleCount += 1;
       }
     }
 
-    return { events: ingestedEvents };
+    return { events: ingestedEvents, lifecycleCount };
   });
 };
 

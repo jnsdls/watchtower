@@ -122,6 +122,46 @@ describe("Event ingestion", () => {
     await expect(listEventsForRun(db, runId)).resolves.toHaveLength(0);
   });
 
+  it("reports lifecycle ingestions so the route can pulse SSE subscribers", async () => {
+    // Regression: `run.completed` (and other lifecycle telemetry) used to
+    // ingest silently — `events: []`, `publish([])` early-returns, dashboards
+    // never refresh. The route now needs `lifecycleCount > 0` to fire a pulse.
+    const newRunId = "00000000-0000-4000-8000-000000000099";
+    const project = await createProject(db, {
+      localPath: "/tmp/watchtower-pulse",
+      displayName: "watchtower-pulse",
+    });
+    const job = await createJob(db, {
+      projectId: project.id,
+      startedAt: new Date("2026-05-02T20:00:00.000Z"),
+      status: "running",
+    });
+
+    const result = await ingestEventBatch(db, {
+      events: [
+        {
+          type: "run.started",
+          runId: newRunId,
+          jobId: job.id,
+          name: "implementer",
+          agentProvider: "codex",
+          sandboxProvider: "docker",
+          configSnapshot: {},
+          timestamp: "2026-05-02T20:01:00.000Z",
+        },
+        {
+          type: "run.completed",
+          runId: newRunId,
+          status: "succeeded",
+          timestamp: "2026-05-02T20:02:00.000Z",
+        },
+      ],
+    });
+
+    expect(result.events).toHaveLength(0);
+    expect(result.lifecycleCount).toBe(2);
+  });
+
   it("rolls back the whole batch when persistence fails", async () => {
     await expect(
       ingestEventBatch(db, {

@@ -14,6 +14,12 @@ export const POST = async (request: Request) => {
   try {
     const result = await ingestEventBatch(db, await request.json());
     eventBroadcaster.publish(result.events);
+    // Lifecycle telemetry (run.started, run.completed, job.*) doesn't
+    // surface through `result.events`, so dashboards subscribed to the
+    // SSE stream need an out-of-band nudge to re-fetch.
+    if (result.events.length === 0 && result.lifecycleCount > 0) {
+      eventBroadcaster.pulse();
+    }
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

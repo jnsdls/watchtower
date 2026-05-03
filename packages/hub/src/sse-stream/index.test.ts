@@ -154,4 +154,38 @@ describe("SSE stream", () => {
       "content-type": "text/event-stream; charset=utf-8",
     });
   });
+
+  it("emits a `tick` Event when the broadcaster pulses (lifecycle telemetry)", async () => {
+    // Seed one Event so reading its backfill chunk also acts as a
+    // synchronization point — by the time we get the chunk, start()
+    // has finished and the pulse subscription is live.
+    await createEvent(db, {
+      sequenceNumber: 1,
+      runId,
+      type: "text",
+      payload: { text: "seed" },
+      timestamp: new Date("2026-05-02T20:02:00.000Z"),
+    });
+
+    const broadcaster = createEventBroadcaster();
+    const stream = createSseEventStream({
+      broadcaster,
+      db,
+      lastEventId: null,
+    });
+    const reader = stream.getReader();
+
+    const seedChunk = await readChunk(reader);
+    expect(seedChunk).toContain("seed");
+
+    broadcaster.pulse();
+    const tickChunk = await readChunk(reader);
+
+    await reader.cancel();
+
+    // A pulse must produce an SSE `tick` event with no `id:` line so that
+    // Last-Event-ID resume continues to track only real Events.
+    expect(tickChunk).toContain("event: tick");
+    expect(tickChunk).not.toMatch(/^id:/m);
+  });
 });

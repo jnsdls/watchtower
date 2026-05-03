@@ -14,7 +14,7 @@ export function LiveUpdates() {
   useEffect(() => {
     const source = new EventSource("/api/stream");
 
-    source.addEventListener("event", () => {
+    const scheduleRefresh = () => {
       if (refreshTimer.current) {
         return;
       }
@@ -23,7 +23,14 @@ export function LiveUpdates() {
         refreshTimer.current = undefined;
         router.refresh();
       }, refreshDelayMs);
-    });
+    };
+
+    // `event` carries persisted stream Events (text / toolCall).
+    // `tick` is a payload-less pulse fired when lifecycle telemetry
+    // (run.started/completed, job.*, planner.output) mutated DB state
+    // without producing a stream Event. Both should refresh the page.
+    source.addEventListener("event", scheduleRefresh);
+    source.addEventListener("tick", scheduleRefresh);
 
     return () => {
       source.close();

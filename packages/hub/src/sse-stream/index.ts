@@ -3,6 +3,7 @@ import { listEventsAfterSequence } from "../db/queries";
 
 type StreamEvent = Awaited<ReturnType<typeof listEventsAfterSequence>>[number];
 type EventListener = (events: StreamEvent[]) => void;
+type PulseListener = () => void;
 
 export const sseHeaders = new Headers({
   "Cache-Control": "no-cache, no-transform",
@@ -11,7 +12,8 @@ export const sseHeaders = new Headers({
 });
 
 export const createEventBroadcaster = () => {
-  const listeners = new Set<EventListener>();
+  const eventListeners = new Set<EventListener>();
+  const pulseListeners = new Set<PulseListener>();
 
   return {
     publish(events: StreamEvent[]) {
@@ -19,15 +21,31 @@ export const createEventBroadcaster = () => {
         return;
       }
 
-      for (const listener of listeners) {
+      for (const listener of eventListeners) {
         listener(events);
       }
     },
+    // Lifecycle telemetry (job/run started, run/job completed, planner
+    // output) does not produce stream Events but still mutates DB state
+    // the dashboard renders. `pulse()` is a payload-less notification
+    // that nudges connected dashboards to re-fetch via router.refresh().
+    pulse() {
+      for (const listener of pulseListeners) {
+        listener();
+      }
+    },
     subscribe(listener: EventListener) {
-      listeners.add(listener);
+      eventListeners.add(listener);
 
       return () => {
-        listeners.delete(listener);
+        eventListeners.delete(listener);
+      };
+    },
+    subscribePulse(listener: PulseListener) {
+      pulseListeners.add(listener);
+
+      return () => {
+        pulseListeners.delete(listener);
       };
     },
   };
@@ -57,6 +75,12 @@ const serializeEvent = (event: StreamEvent) =>
     "",
   ].join("\n");
 
+// Pulses carry no payload and intentionally omit `id:` so they don't
+// participate in Last-Event-ID resume — a missed pulse is harmless
+// because subsequent real Events (or the next pulse) will trigger the
+// dashboard refresh anyway.
+const tickFrame = ["event: tick", "data:", "", ""].join("\n");
+
 export const createSseEventStream = ({
   broadcaster,
   db,
@@ -79,6 +103,7 @@ export const createSseEventStream = ({
   let isBackfillComplete = false;
   let lastSentSequence = parseLastEventId(lastEventId);
   let unsubscribe: (() => void) | undefined;
+  let unsubscribePulse: (() => void) | undefined;
 
   const close = () => {
     if (isClosed) {
@@ -87,6 +112,7 @@ export const createSseEventStream = ({
 
     isClosed = true;
     unsubscribe?.();
+    unsubscribePulse?.();
     try {
       controller?.close();
     } catch (error) {
@@ -126,6 +152,21 @@ export const createSseEventStream = ({
     flush();
   };
 
+  const enqueueTick = () => {
+    if (isClosed) {
+      return;
+    }
+
+    pending.push(textEncoder.encode(tickFrame));
+
+    if (pending.length > maxQueuedEvents) {
+      close();
+      return;
+    }
+
+    flush();
+  };
+
   return new ReadableStream<Uint8Array>(
     {
       async start(streamController) {
@@ -142,6 +183,12 @@ export const createSseEventStream = ({
 
             enqueue(event);
           }
+        });
+        unsubscribePulse = broadcaster.subscribePulse(() => {
+          // Pulses can fire during backfill but they don't carry data
+          // that needs ordering relative to the backfill batch — the
+          // dashboard's debounced router.refresh() coalesces them.
+          enqueueTick();
         });
 
         const backfillEvents = await listEventsAfterSequence(
