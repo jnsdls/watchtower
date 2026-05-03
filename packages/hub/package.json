@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "next build && cp -R .next/static .next/standalone/packages/hub/.next/static",
     "dev": "next dev -H 127.0.0.1 -p 7777",
     "drizzle:generate": "drizzle-kit generate",
-    "drizzle:migrate": "drizzle-kit migrate"
+    "drizzle:migrate": "drizzle-kit migrate",
+    "start": "node .next/standalone/packages/hub/server.js"
   },
   "exports": {
     ".": "./src/index.ts"
