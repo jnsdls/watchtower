@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -146,8 +146,9 @@ const createBunTransformedEntry = async (
   const source = await readFile(mainPath, "utf8");
   const tempId = randomUUID();
   const mainDir = dirname(mainPath);
+  const mainExt = extname(mainPath) || ".mjs";
   const wrapperPath = join(mainDir, `.watchtower-sandcastle-${tempId}.mjs`);
-  const entryPath = join(mainDir, `.watchtower-main-${tempId}.mjs`);
+  const entryPath = join(mainDir, `.watchtower-main-${tempId}${mainExt}`);
   const wrapperUrl = pathToFileURL(wrapperPath).href;
   const transformedSource = source
     .replaceAll('"@ai-hero/sandcastle"', JSON.stringify(wrapperUrl))

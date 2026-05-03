@@ -21,7 +21,7 @@ const createStringSink = () => {
   };
 };
 
-const writeFixture = async () => {
+const writeFixture = async (mainExt: ".mjs" | ".ts" = ".mjs") => {
   const root = await mkdtemp(join(tmpdir(), "watchtower-loader-"));
   const fakePackageDir = join(root, "node_modules", "@ai-hero", "sandcastle");
   await mkdir(join(fakePackageDir, "sandboxes"), { recursive: true });
@@ -67,20 +67,35 @@ export const docker = () => ({ provider: "docker" });
 `,
   );
 
-  const mainPath = join(root, "main.mjs");
+  const tsOnly =
+    mainExt === ".ts"
+      ? `
+type AgentName = "planner" | "reviewer";
+const planner: AgentName = "planner";
+const reviewer = "reviewer" as AgentName;
+const maybeName: AgentName | undefined = planner;
+const assertedName: AgentName = maybeName!;
+`
+      : `
+const planner = "planner";
+const reviewer = "reviewer";
+const assertedName = planner;
+`;
+
+  const mainPath = join(root, `main${mainExt}`);
   await writeFile(
     mainPath,
     `
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
-
+${tsOnly}
 const direct = await sandcastle.run({
   agent: sandcastle.claudeCode("fake"),
   logging: {
     type: "file",
     onAgentStreamEvent: (event) => console.log("user-event:" + event.text)
   },
-  name: "planner",
+  name: assertedName,
   sandbox: docker()
 });
 const sandbox = await sandcastle.createSandbox({
@@ -89,7 +104,7 @@ const sandbox = await sandcastle.createSandbox({
 });
 const nested = await sandbox.run({
   agent: sandcastle.claudeCode("fake"),
-  name: "reviewer"
+  name: reviewer
 });
 
 console.log(JSON.stringify({
@@ -115,11 +130,16 @@ const parseCallLogs = (stderr: string) =>
     .filter((entry) => entry.source === "watchtower");
 
 describe("loader", () => {
-  it.each<RuntimeName>([
-    "bun",
-    "node",
-  ])("wraps sandcastle imports under %s and preserves behavior", async (runtime) => {
-    const fixture = await writeFixture();
+  it.each<{ runtime: RuntimeName; mainExt: ".mjs" | ".ts" }>([
+    { runtime: "bun", mainExt: ".mjs" },
+    { runtime: "bun", mainExt: ".ts" },
+    { runtime: "node", mainExt: ".mjs" },
+    { runtime: "node", mainExt: ".ts" },
+  ])("wraps sandcastle imports under $runtime ($mainExt entry) and preserves behavior", async ({
+    mainExt,
+    runtime,
+  }) => {
+    const fixture = await writeFixture(mainExt);
     const stdout = createStringSink();
     const stderr = createStringSink();
 
