@@ -1,6 +1,6 @@
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Button } from "../components/ui/button";
 import type {
   getJob,
   getProject,
@@ -306,13 +306,21 @@ export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
                 <th className="px-4 py-3 font-medium">Latest activity</th>
                 <th className="px-4 py-3 font-medium">Jobs</th>
                 <th className="px-4 py-3 font-medium">Runs</th>
-                <th className="px-4 py-3 font-medium">Open</th>
+                <th className="w-12" />
               </tr>
             </thead>
             <tbody>
               {projects.map((project) => (
-                <tr className="border-border border-t" key={project.id}>
+                <tr
+                  className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
+                  key={project.id}
+                >
                   <td className="px-4 py-3">
+                    <Link
+                      aria-label={`Open ${project.displayName}`}
+                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      href={`/projects/${project.id}`}
+                    />
                     <div className="font-medium text-foreground">
                       {project.displayName}
                     </div>
@@ -329,10 +337,11 @@ export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
                   <td className="px-4 py-3 text-foreground">
                     {project.runCount}
                   </td>
-                  <td className="px-4 py-3">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/projects/${project.id}`}>Open</Link>
-                    </Button>
+                  <td className="px-4 py-3 text-right">
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="ml-auto size-4 text-muted-foreground"
+                    />
                   </td>
                 </tr>
               ))}
@@ -365,13 +374,21 @@ export function ProjectDetailPage({
                 <th className="px-4 py-3 font-medium">Duration</th>
                 <th className="px-4 py-3 font-medium">Runs</th>
                 <th className="px-4 py-3 font-medium">Tokens</th>
-                <th className="px-4 py-3 font-medium">Open</th>
+                <th className="w-12" />
               </tr>
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr className="border-border border-t" key={job.id}>
+                <tr
+                  className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
+                  key={job.id}
+                >
                   <td className="px-4 py-3 text-foreground">
+                    <Link
+                      aria-label={`Open Job started ${formatDateTime(job.startedAt)}`}
+                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      href={`/jobs/${job.id}`}
+                    />
                     {formatDateTime(job.startedAt)}
                   </td>
                   <td className="px-4 py-3">
@@ -384,10 +401,11 @@ export function ProjectDetailPage({
                   <td className="px-4 py-3 text-foreground">
                     {formatTokens(job.totalTokens)}
                   </td>
-                  <td className="px-4 py-3">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/jobs/${job.id}`}>Open</Link>
-                    </Button>
+                  <td className="px-4 py-3 text-right">
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="ml-auto size-4 text-muted-foreground"
+                    />
                   </td>
                 </tr>
               ))}
@@ -482,13 +500,21 @@ export function JobDetailPage({
                 <th className="px-4 py-3 font-medium">Agent Provider</th>
                 <th className="px-4 py-3 font-medium">Sandbox Provider</th>
                 <th className="px-4 py-3 font-medium">Duration</th>
-                <th className="px-4 py-3 font-medium">Open</th>
+                <th className="w-12" />
               </tr>
             </thead>
             <tbody>
               {runs.map((run) => (
-                <tr className="border-border border-t" key={run.id}>
+                <tr
+                  className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
+                  key={run.id}
+                >
                   <td className="px-4 py-3 font-medium text-foreground">
+                    <Link
+                      aria-label={`Open ${run.name} Run`}
+                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      href={`/runs/${run.id}`}
+                    />
                     {run.name}
                   </td>
                   <td className="px-4 py-3">
@@ -504,10 +530,11 @@ export function JobDetailPage({
                   <td className="px-4 py-3 text-foreground">
                     {formatDuration(run.startedAt, run.endedAt)}
                   </td>
-                  <td className="px-4 py-3">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/runs/${run.id}`}>Open</Link>
-                    </Button>
+                  <td className="px-4 py-3 text-right">
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="ml-auto size-4 text-muted-foreground"
+                    />
                   </td>
                 </tr>
               ))}
