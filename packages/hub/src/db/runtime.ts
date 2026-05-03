@@ -2,10 +2,19 @@ import { backfillOrphanRunLinkages } from "../task-status";
 import { createHubDatabase, type HubDatabase } from "./client";
 import { applyDatabaseMigrations } from "./setup";
 
-let databasePromise: Promise<HubDatabase> | undefined;
+// Pinned to globalThis so Next dev / Turbopack HMR module re-evaluation
+// reuses the same PGlite connection. Without this, every reloaded module
+// graph creates its own connection against the same pgdata dir, and each
+// instance keeps a divergent in-memory view — writes posted via one route
+// become invisible to pages rendered through another.
+const globalKey = Symbol.for("watchtower.hub.databasePromise");
+type GlobalWithDatabase = typeof globalThis & {
+  [globalKey]?: Promise<HubDatabase>;
+};
+const globalScope = globalThis as GlobalWithDatabase;
 
 export const getHubDatabase = async () => {
-  databasePromise ??= (async () => {
+  globalScope[globalKey] ??= (async () => {
     const db = createHubDatabase();
     await applyDatabaseMigrations(db);
     // One-shot at boot: link any Runs that were ingested before the
@@ -15,5 +24,5 @@ export const getHubDatabase = async () => {
     return db;
   })();
 
-  return databasePromise;
+  return globalScope[globalKey];
 };
