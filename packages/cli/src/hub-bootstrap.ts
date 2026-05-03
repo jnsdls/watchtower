@@ -33,7 +33,7 @@ export type DetachedStartResult = {
 export type StopHubResult =
   | { status: "not-running" }
   | { status: "stale"; pid: number }
-  | { status: "stopped"; pid: number };
+  | { status: "stopped"; pid: number; signal: "SIGTERM" | "SIGKILL" };
 
 export type HubStatus =
   | { reachable: true; url: string; version: string }
@@ -62,6 +62,8 @@ type HubBootstrapDependencies = {
   readinessIntervalMs?: number;
   pingHub?: (config: HubConfig) => Promise<HubPing>;
   openUrl?: (url: string) => Promise<void>;
+  stopGracefulTimeoutMs?: number;
+  stopForcefulTimeoutMs?: number;
 };
 
 const defaultPort = 7777;
@@ -69,7 +71,8 @@ const defaultBindAddress = "127.0.0.1";
 const defaultReadinessTimeoutMs = 30_000;
 const defaultReadinessIntervalMs = 250;
 const stopPollIntervalMs = 100;
-const stopMaxAttempts = 40;
+const defaultStopGracefulTimeoutMs = 10_000;
+const defaultStopForcefulTimeoutMs = 2_000;
 
 const packageRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -319,6 +322,10 @@ export const stopDetachedHub = async (
   const processRunning = dependencies.isProcessRunning ?? isProcessRunning;
   const signalProcess = dependencies.killProcess ?? killProcess;
   const wait = dependencies.sleep ?? sleep;
+  const gracefulTimeoutMs =
+    dependencies.stopGracefulTimeoutMs ?? defaultStopGracefulTimeoutMs;
+  const forcefulTimeoutMs =
+    dependencies.stopForcefulTimeoutMs ?? defaultStopForcefulTimeoutMs;
   const existingPid = await readPid(config.pidPath);
 
   if (existingPid === undefined) {
@@ -330,15 +337,32 @@ export const stopDetachedHub = async (
     return { status: "stale", pid: existingPid };
   }
 
-  signalProcess(existingPid, "SIGTERM");
+  const waitForExit = async (timeoutMs: number) => {
+    const attempts = Math.max(1, Math.ceil(timeoutMs / stopPollIntervalMs));
 
-  for (let attempt = 0; attempt < stopMaxAttempts; attempt += 1) {
-    if (!processRunning(existingPid)) {
-      await clearPid(config.pidPath);
-      return { status: "stopped", pid: existingPid };
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (!processRunning(existingPid)) {
+        return true;
+      }
+
+      await wait(stopPollIntervalMs);
     }
 
-    await wait(stopPollIntervalMs);
+    return !processRunning(existingPid);
+  };
+
+  signalProcess(existingPid, "SIGTERM");
+
+  if (await waitForExit(gracefulTimeoutMs)) {
+    await clearPid(config.pidPath);
+    return { status: "stopped", pid: existingPid, signal: "SIGTERM" };
+  }
+
+  signalProcess(existingPid, "SIGKILL");
+
+  if (await waitForExit(forcefulTimeoutMs)) {
+    await clearPid(config.pidPath);
+    return { status: "stopped", pid: existingPid, signal: "SIGKILL" };
   }
 
   throw new Error(`Timed out waiting for Hub process ${existingPid} to stop.`);

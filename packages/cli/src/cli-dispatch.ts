@@ -104,7 +104,11 @@ const createDefaultHandlers = (
       return 0;
     }
 
-    stdout(`Stopped Hub pid ${result.pid}.`);
+    stdout(
+      result.signal === "SIGKILL"
+        ? `Stopped Hub pid ${result.pid} (force-killed after SIGTERM timeout).`
+        : `Stopped Hub pid ${result.pid}.`,
+    );
     return 0;
   },
   hubStatus: async () => {

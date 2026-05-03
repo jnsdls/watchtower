@@ -76,11 +76,79 @@ describe("hub-bootstrap", () => {
         sleep: async () => {},
       });
 
-      expect(result).toEqual({ status: "stopped", pid: 12345 });
+      expect(result).toEqual({
+        status: "stopped",
+        pid: 12345,
+        signal: "SIGTERM",
+      });
       expect(killed).toEqual([{ pid: 12345, signal: "SIGTERM" }]);
       await expect(stat(join(home, "hub.pid"))).rejects.toMatchObject({
         code: "ENOENT",
       });
+    } finally {
+      await rm(home, { force: true, recursive: true });
+    }
+  });
+
+  it("escalates to SIGKILL when SIGTERM does not stop the Hub", async () => {
+    const home = await createHome();
+    const killed: Array<{ pid: number; signal: NodeJS.Signals }> = [];
+    let running = true;
+
+    try {
+      await startHubDetached(resolveHubConfig({ home }), {
+        spawnDetached: () => ({ pid: 12345 }),
+        isProcessRunning: () => false,
+      });
+
+      const result = await stopDetachedHub(resolveHubConfig({ home }), {
+        isProcessRunning: () => running,
+        killProcess: (pid, signal) => {
+          killed.push({ pid, signal });
+          if (signal === "SIGKILL") {
+            running = false;
+          }
+        },
+        sleep: async () => {},
+        stopGracefulTimeoutMs: 5,
+        stopForcefulTimeoutMs: 5,
+      });
+
+      expect(result).toEqual({
+        status: "stopped",
+        pid: 12345,
+        signal: "SIGKILL",
+      });
+      expect(killed).toEqual([
+        { pid: 12345, signal: "SIGTERM" },
+        { pid: 12345, signal: "SIGKILL" },
+      ]);
+      await expect(stat(join(home, "hub.pid"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await rm(home, { force: true, recursive: true });
+    }
+  });
+
+  it("throws when even SIGKILL fails to stop the Hub", async () => {
+    const home = await createHome();
+
+    try {
+      await startHubDetached(resolveHubConfig({ home }), {
+        spawnDetached: () => ({ pid: 12345 }),
+        isProcessRunning: () => false,
+      });
+
+      await expect(
+        stopDetachedHub(resolveHubConfig({ home }), {
+          isProcessRunning: () => true,
+          killProcess: () => {},
+          sleep: async () => {},
+          stopGracefulTimeoutMs: 5,
+          stopForcefulTimeoutMs: 5,
+        }),
+      ).rejects.toThrow("Timed out waiting for Hub process 12345 to stop.");
     } finally {
       await rm(home, { force: true, recursive: true });
     }
