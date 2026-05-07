@@ -13,3 +13,7 @@ Default canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Domain docs
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Design reference
+
+Frozen design handoff for the Dashboard (HTML/CSS/JS prototypes + chat transcript). Read before re-implementing existing or building new Dashboard screens. See `docs/design/README.md`.
