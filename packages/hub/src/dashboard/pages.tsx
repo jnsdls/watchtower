@@ -1,10 +1,20 @@
-import { ChevronRight } from "lucide-react";
+import {
+  BarChart3,
+  ChevronRight,
+  Clock3,
+  GitBranch,
+  GitCompare,
+  Hammer,
+  SquareArrowOutUpRight,
+} from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Button } from "../components/ui/button";
 import type {
   getJob,
   getProject,
   getRun,
+  getTask,
   listEventsForRun,
   listIterationsForRun,
   listJobsForProjectSummary,
@@ -12,9 +22,24 @@ import type {
   listRunsForJob,
   listTasksForJob,
 } from "../db/queries";
+import { costForRun } from "../pricing/rates";
 import { CancelRunButton } from "./cancel-run-button";
 import { formatDateTime, formatDuration, formatTokens } from "./format";
-import { StatusPill, type StatusPillStatus } from "./primitives";
+import {
+  LiveDuration,
+  Mono,
+  Num,
+  StatusPill,
+  type StatusPillStatus,
+} from "./primitives";
+import { CopyLogsButton } from "./run-detail-actions";
+import { AutoScrollTimeline } from "./run-detail-auto-scroll";
+import {
+  buildRunDetailState,
+  type RunDetailEvent,
+  type RunDetailIteration,
+  type RunDetailTurn,
+} from "./run-detail-state";
 
 type ProjectListItem = Awaited<
   ReturnType<typeof listProjectsByRecentActivity>
@@ -22,6 +47,7 @@ type ProjectListItem = Awaited<
 type Project = NonNullable<Awaited<ReturnType<typeof getProject>>>;
 type Job = NonNullable<Awaited<ReturnType<typeof getJob>>>;
 type Run = NonNullable<Awaited<ReturnType<typeof getRun>>>;
+type Task = NonNullable<Awaited<ReturnType<typeof getTask>>>;
 type JobSummary = Awaited<ReturnType<typeof listJobsForProjectSummary>>[number];
 type RunListItem = Awaited<ReturnType<typeof listRunsForJob>>[number];
 type TaskListItem = Awaited<ReturnType<typeof listTasksForJob>>[number];
@@ -570,6 +596,8 @@ export function JobDetailPage({
   );
 }
 
+const shortId = (prefix: string, id: string) => `${prefix}_${id.slice(0, 6)}`;
+
 const eventBody = (event: EventListItem) => {
   if (event.type === "text") {
     const payload = event.payload as { message?: unknown; text?: unknown };
@@ -589,239 +617,487 @@ const eventBody = (event: EventListItem) => {
   return JSON.stringify(event.payload);
 };
 
-const tokenMetrics = [
-  ["Input", "inputTokens"],
-  ["Output", "outputTokens"],
-  ["Cache read", "cacheReadInputTokens"],
-  ["Cache creation", "cacheCreationInputTokens"],
-] as const;
+const formatUsd = (value: number | null) =>
+  value === null
+    ? "—"
+    : new Intl.NumberFormat("en", {
+        currency: "USD",
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+        style: "currency",
+      }).format(value);
 
-type TokenMetricKey = (typeof tokenMetrics)[number][1];
+const rawEventStream = (events: EventListItem[]) =>
+  events
+    .map((event) =>
+      JSON.stringify({
+        payload: event.payload,
+        sequenceNumber: event.sequenceNumber,
+        timestamp: event.timestamp.toISOString(),
+        type: event.type,
+      }),
+    )
+    .join("\n");
 
-const sumNonNull = (values: (number | null)[]): number | null => {
-  let total: number | null = null;
-  for (const value of values) {
-    if (value !== null) {
-      total = (total ?? 0) + value;
-    }
-  }
-  return total;
-};
+const timeOnly = (date: Date | null) =>
+  date
+    ? new Intl.DateTimeFormat("en", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZone: "UTC",
+      }).format(date)
+    : "n/a";
 
-const sumIterationTokens = (
-  iterations: IterationListItem[],
-  metric: TokenMetricKey,
-) => sumNonNull(iterations.map((iteration) => iteration[metric]));
+const iterationDuration = (iteration: RunDetailIteration) =>
+  formatDuration(iteration.startedAt, iteration.endedAt);
 
-const totalIterationTokens = (iteration: IterationListItem) =>
-  sumNonNull(tokenMetrics.map(([, metric]) => iteration[metric]));
-
-const totalRunTokens = (iterations: IterationListItem[]) =>
-  sumNonNull(
-    iterations.flatMap((iteration) =>
-      tokenMetrics.map(([, metric]) => iteration[metric]),
-    ),
-  );
-
-const eventIterationNumber = (event: EventListItem) => {
-  const payload = event.payload as { iteration?: unknown };
-  return typeof payload.iteration === "number" ? payload.iteration : null;
-};
-
-const EventRow = ({ event }: { event: EventListItem }) => (
-  <li className="rounded-md border border-border bg-card p-4">
-    <div className="flex flex-wrap items-center gap-3 text-sm">
-      <Status value={event.type} />
-      <span className="text-muted">
-        #{event.sequenceNumber} - {formatDateTime(event.timestamp)}
-      </span>
-    </div>
-    <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-card-soft p-3 text-fg text-sm">
-      {eventBody(event)}
-    </pre>
-  </li>
-);
-
-const TokenPanel = ({ iterations }: { iterations: IterationListItem[] }) => (
-  <section className="overflow-hidden rounded-md border border-border bg-card">
-    <div className="border-border border-b px-4 py-3">
-      <h2 className="font-medium text-fg">Token usage</h2>
-    </div>
-    <table className="w-full border-collapse text-left text-sm">
-      <thead className="bg-card-soft text-muted">
-        <tr>
-          <th className="px-4 py-3 font-medium">Scope</th>
-          {tokenMetrics.map(([label]) => (
-            <th className="px-4 py-3 font-medium" key={label}>
-              {label}
-            </th>
-          ))}
-          <th className="px-4 py-3 font-medium">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {iterations.map((iteration) => (
-          <tr className="border-border border-t" key={iteration.id}>
-            <td className="px-4 py-3 font-medium text-fg">
-              Iteration {iteration.n}
-            </td>
-            {tokenMetrics.map(([label, metric]) => (
-              <td className="px-4 py-3 text-fg" key={label}>
-                {formatTokens(iteration[metric])}
-              </td>
-            ))}
-            <td className="px-4 py-3 text-fg">
-              {formatTokens(totalIterationTokens(iteration))}
-            </td>
-          </tr>
-        ))}
-        <tr className="border-border border-t bg-card-soft">
-          <td className="px-4 py-3 font-medium text-fg">Run total</td>
-          {tokenMetrics.map(([label, metric]) => (
-            <td className="px-4 py-3 text-fg" key={label}>
-              {formatTokens(sumIterationTokens(iterations, metric))}
-            </td>
-          ))}
-          <td className="px-4 py-3 text-fg">
-            {formatTokens(totalRunTokens(iterations))}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </section>
-);
-
-const EventTimeline = ({
+const RunHeader = ({
+  activeIteration,
   events,
+  isMultiIteration,
+  run,
+  task,
+}: {
+  activeIteration: RunDetailIteration;
+  events: EventListItem[];
+  isMultiIteration: boolean;
+  run: Run;
+  task: Task | null;
+}) => (
+  <header className="flex flex-col gap-2 border-border border-b pb-5">
+    <div className="flex flex-wrap items-center gap-2">
+      <Mono className="text-[11px] text-muted">
+        RUN · {shortId("r", run.id)}
+      </Mono>
+      <Status value={run.status} />
+      <Mono className="text-[11px] text-muted">{run.name}</Mono>
+      <span aria-hidden="true" className="h-3 w-px bg-border-strong" />
+      {isMultiIteration ? (
+        <Mono className="text-[11px] text-muted">
+          iteration {activeIteration.n} / {run.maxIterations ?? "?"}
+        </Mono>
+      ) : (
+        <Mono className="text-[11px] text-muted">iteration 1</Mono>
+      )}
+      <Mono className="text-[11px] text-muted">
+        · turn {activeIteration.turnCount}
+      </Mono>
+    </div>
+    <h1 className="font-semibold text-fg text-xl leading-snug">
+      {task?.title ?? run.name}
+    </h1>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3 text-muted text-xs">
+        <span className="inline-flex items-center gap-1">
+          <Clock3 aria-hidden="true" className="size-3.5" />
+          Started {timeOnly(run.startedAt)} ·{" "}
+          <LiveDuration
+            className={run.endedAt ? undefined : "text-st-running"}
+            endedAt={run.endedAt}
+            startedAt={run.startedAt}
+          />
+        </span>
+        {run.branch ? (
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <GitBranch aria-hidden="true" className="size-3.5" />
+            <Mono className="truncate">{run.branch}</Mono>
+          </span>
+        ) : null}
+        {run.agentModel ? <Mono>{run.agentModel}</Mono> : null}
+        <Mono>{run.sandboxProvider}</Mono>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <CopyLogsButton logs={rawEventStream(events)} />
+        <Button type="button" variant="ghost">
+          <GitCompare aria-hidden="true" className="size-4" />
+          Compare to last
+        </Button>
+        {run.status === "running" ? <CancelRunButton runId={run.id} /> : null}
+      </div>
+    </div>
+  </header>
+);
+
+const IterationSwitcher = ({
+  activeIterationNumber,
   iterations,
 }: {
-  events: EventListItem[];
-  iterations: IterationListItem[];
+  activeIterationNumber: number;
+  iterations: RunDetailIteration[];
 }) => {
-  if (events.length === 0) {
-    return <EmptyState>No Events have been captured for this Run.</EmptyState>;
-  }
-
-  if (iterations.length === 0) {
-    return (
-      <ol className="flex flex-col gap-3">
-        {events.map((event) => (
-          <EventRow event={event} key={event.id} />
-        ))}
-      </ol>
-    );
-  }
-
-  const eventsByIterationId = new Map<string, EventListItem[]>(
-    iterations.map((iteration) => [iteration.id, []]),
-  );
-  const iterationIdByNumber = new Map(
-    iterations.map((iteration) => [iteration.n, iteration.id]),
-  );
-  const unassignedEvents: EventListItem[] = [];
-
-  for (const event of events) {
-    const payloadIterationNumber = eventIterationNumber(event);
-    const iterationId =
-      event.iterationId ??
-      (payloadIterationNumber === null
-        ? undefined
-        : iterationIdByNumber.get(payloadIterationNumber));
-    const iterationEvents = iterationId
-      ? eventsByIterationId.get(iterationId)
-      : undefined;
-
-    if (iterationEvents) {
-      iterationEvents.push(event);
-    } else {
-      unassignedEvents.push(event);
-    }
+  if (iterations.length <= 1) {
+    return null;
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <nav
+      aria-label="Iterations"
+      className="flex overflow-hidden rounded-md border border-border bg-bg-elev"
+    >
       {iterations.map((iteration) => {
-        const iterationEvents = eventsByIterationId.get(iteration.id) ?? [];
+        const active = iteration.n === activeIterationNumber;
+
         return (
-          <section className="flex flex-col gap-3" key={iteration.id}>
-            <div className="flex flex-wrap items-center gap-3 border-border border-l-4 bg-card-soft px-4 py-3 text-sm">
-              <span className="font-medium text-fg">
-                Iteration {iteration.n}/{iterations.length}
-              </span>
-              <span className="text-muted">
-                {formatDateTime(iteration.startedAt)} -{" "}
-                {formatDateTime(iteration.endedAt)}
-              </span>
-            </div>
-            {iterationEvents.length === 0 ? (
-              <EmptyState>No Events captured for this iteration.</EmptyState>
-            ) : (
-              <ol className="flex flex-col gap-3">
-                {iterationEvents.map((event) => (
-                  <EventRow event={event} key={event.id} />
-                ))}
-              </ol>
-            )}
-          </section>
+          <Link
+            className={`flex flex-1 flex-col gap-1 border-border border-r px-3 py-2 text-left last:border-r-0 ${
+              active
+                ? "border-t-2 border-t-accent bg-card"
+                : "border-t-2 border-t-transparent"
+            }`}
+            data-active={active}
+            href={`?iter=${iteration.n}`}
+            key={iteration.id}
+          >
+            <span className="flex items-center gap-2">
+              <Mono
+                className={
+                  active ? "text-[11px] text-fg" : "text-[11px] text-muted"
+                }
+              >
+                iteration {iteration.n}
+              </Mono>
+              <StatusPill status={iteration.status}>
+                {iteration.status}
+              </StatusPill>
+            </span>
+            <Mono className="text-[11px] text-muted-2">
+              {iteration.turnCount} turns · {iterationDuration(iteration)}
+            </Mono>
+          </Link>
         );
       })}
-      {unassignedEvents.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <div className="border-border border-l-4 bg-card-soft px-4 py-3 font-medium text-fg text-sm">
-            Unassigned Events
+    </nav>
+  );
+};
+
+const EventCard = ({ event }: { event: RunDetailEvent }) => {
+  if (event.type === "text") {
+    return (
+      <li className="rounded-md border border-border bg-card px-3 py-2">
+        <div className="flex gap-3">
+          <Mono className="w-14 shrink-0 text-[10px] text-muted">
+            {timeOnly(event.timestamp)}
+          </Mono>
+          <div className="whitespace-pre-wrap break-words text-fg-soft text-sm leading-relaxed">
+            {eventBody(event)}
           </div>
-          <ol className="flex flex-col gap-3">
-            {unassignedEvents.map((event) => (
-              <EventRow event={event} key={event.id} />
-            ))}
-          </ol>
-        </section>
-      ) : null}
+        </div>
+      </li>
+    );
+  }
+
+  const payload = event.payload as { name?: unknown; formattedArgs?: unknown };
+  const name =
+    typeof payload.name === "string" && payload.name.length > 0
+      ? payload.name
+      : "tool";
+
+  return (
+    <li
+      className="rounded-md border border-border bg-card px-3 py-2"
+      title={`${name} ${String(payload.formattedArgs ?? "")}`.trim()}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <Mono className="w-14 shrink-0 text-[10px] text-muted">
+          {timeOnly(event.timestamp)}
+        </Mono>
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-[5px] border border-border bg-card-soft text-fg-soft">
+          <Hammer aria-hidden="true" className="size-3.5" />
+        </span>
+        <Mono className="min-w-14 text-fg text-xs">{name}</Mono>
+        <Mono className="truncate text-muted text-xs">
+          {String(payload.formattedArgs ?? "")}
+        </Mono>
+      </div>
+    </li>
+  );
+};
+
+const TurnRail = ({
+  iterationTokenTotal,
+  turns,
+}: {
+  iterationTokenTotal: number | null;
+  turns: RunDetailTurn[];
+}) => {
+  if (turns.length === 0) {
+    return (
+      <EmptyState>No Events have been captured for this iteration.</EmptyState>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div
+        aria-hidden="true"
+        className="absolute top-1 bottom-0 left-[18px] w-px bg-border"
+      />
+      <div className="flex flex-col gap-4">
+        {turns.map((turn) => (
+          <section className="relative" key={turn.n}>
+            <div className="mb-2 flex items-center gap-2">
+              <div className="z-10 inline-flex h-[22px] w-9 items-center justify-center rounded border border-border bg-card-soft font-mono text-[11px] text-fg">
+                #{String(turn.n).padStart(2, "0")}
+              </div>
+              <Mono className="text-[11px] text-fg-soft">turn {turn.n}</Mono>
+              <Mono className="text-[11px] text-muted">
+                · {formatTokens(iterationTokenTotal)} tok ·{" "}
+                {formatDuration(
+                  turn.startedAt ?? new Date(0),
+                  turn.endedAt ?? turn.startedAt,
+                )}
+              </Mono>
+            </div>
+            <ol className="flex flex-col gap-2 pl-9">
+              {turn.events.map((event) => (
+                <EventCard event={event} key={event.id} />
+              ))}
+            </ol>
+          </section>
+        ))}
+      </div>
     </div>
   );
 };
+
+const MetadataRow = ({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) => (
+  <>
+    <Mono className="text-muted text-xs">{label}</Mono>
+    <div className="min-w-0 text-fg-soft text-xs">{children}</div>
+  </>
+);
+
+const StatTile = ({ label, value }: { label: string; value: ReactNode }) => (
+  <div className="flex flex-col gap-1 rounded-md border border-border bg-card px-3 py-2">
+    <Mono className="text-[10px] text-muted uppercase">{label}</Mono>
+    <Mono className="text-fg text-xs">{value}</Mono>
+  </div>
+);
+
+const RunRightRail = ({
+  activeIteration,
+  cost,
+  isMultiIteration,
+  iterationCount,
+  job,
+  run,
+  task,
+  toolsUsed,
+}: {
+  activeIteration: RunDetailIteration;
+  cost: number | null;
+  isMultiIteration: boolean;
+  iterationCount: number;
+  job: Job | null;
+  run: Run;
+  task: Task | null;
+  toolsUsed: { name: string; count: number; ratio: number }[];
+}) => (
+  <aside className="flex flex-col gap-4 border-border border-l bg-bg-elev px-5 py-5">
+    <section>
+      <h2 className="mb-3 font-mono text-[11px] text-muted uppercase">
+        Run metadata
+      </h2>
+      <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-y-2">
+        <MetadataRow label="ID">
+          <span className="inline-flex items-center gap-2">
+            <Mono>{shortId("r", run.id)}</Mono>
+            <CopyLogsButton label="Copy ID" logs={run.id} />
+          </span>
+        </MetadataRow>
+        <MetadataRow label="Name">
+          <Mono>{run.name}</Mono>
+        </MetadataRow>
+        <MetadataRow label="Job">
+          <Link
+            className="inline-flex items-center gap-1 text-fg hover:text-accent"
+            href={`/jobs/${run.jobId}`}
+          >
+            <Mono>{shortId("j", run.jobId)}</Mono>
+            <SquareArrowOutUpRight aria-hidden="true" className="size-3" />
+          </Link>
+        </MetadataRow>
+        <MetadataRow label="Task">
+          <span className="block truncate">{task?.title ?? "—"}</span>
+        </MetadataRow>
+        <MetadataRow label="Status">
+          <Status value={run.status} />
+        </MetadataRow>
+        <MetadataRow label="Agent">
+          <Mono>{run.agentProvider}</Mono>
+        </MetadataRow>
+        <MetadataRow label="Model">
+          <Mono>{run.agentModel ?? "—"}</Mono>
+        </MetadataRow>
+        <MetadataRow label="Sandbox">
+          <Mono>{run.sandboxProvider}</Mono>
+        </MetadataRow>
+        <MetadataRow label="Branch">
+          <Mono className="block truncate">
+            {run.branch ?? task?.branch ?? "—"}
+          </Mono>
+        </MetadataRow>
+        <MetadataRow label="Started">
+          <Mono>{timeOnly(run.startedAt)}</Mono>
+        </MetadataRow>
+        <MetadataRow label="Elapsed">
+          <LiveDuration
+            className={run.endedAt ? undefined : "text-st-running"}
+            endedAt={run.endedAt}
+            startedAt={run.startedAt}
+          />
+        </MetadataRow>
+        <MetadataRow label="Iterations">
+          <Mono>
+            {isMultiIteration
+              ? `${activeIteration.n} / ${run.maxIterations ?? iterationCount}`
+              : "1"}
+          </Mono>
+        </MetadataRow>
+      </div>
+      {job?.title ? (
+        <p className="mt-3 truncate text-muted text-xs">{job.title}</p>
+      ) : null}
+    </section>
+
+    <div className="h-px bg-border" />
+
+    <section>
+      <h2 className="mb-3 font-mono text-[11px] text-muted uppercase">
+        This iteration
+      </h2>
+      <div className="mb-3 flex items-baseline gap-2">
+        <Mono className="text-fg text-xl">
+          turn {activeIteration.turnCount}
+        </Mono>
+        <LiveDuration
+          className={
+            run.endedAt
+              ? "text-muted text-[11px]"
+              : "text-st-running text-[11px]"
+          }
+          endedAt={activeIteration.endedAt}
+          startedAt={activeIteration.startedAt}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <StatTile
+          label="tokens"
+          value={formatTokens(activeIteration.tokenTotal)}
+        />
+        <StatTile
+          label="events"
+          value={<Num>{activeIteration.eventCount}</Num>}
+        />
+        <StatTile
+          label="tools"
+          value={<Num>{activeIteration.toolCount}</Num>}
+        />
+        <StatTile label="cost" value={formatUsd(cost)} />
+      </div>
+    </section>
+
+    <div className="h-px bg-border" />
+
+    <section>
+      <h2 className="mb-3 flex items-center gap-2 font-mono text-[11px] text-muted uppercase">
+        <BarChart3 aria-hidden="true" className="size-3.5" />
+        Tools used
+      </h2>
+      {toolsUsed.length === 0 ? (
+        <Mono className="text-muted text-xs">—</Mono>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {toolsUsed.map((tool) => (
+            <div
+              className="grid grid-cols-[4.25rem_minmax(0,1fr)_2rem] items-center gap-2"
+              key={tool.name}
+            >
+              <Mono className="truncate text-fg text-[11px]">{tool.name}</Mono>
+              <div className="h-1.5 overflow-hidden rounded-full bg-card-soft">
+                <div
+                  className="h-full bg-accent opacity-60"
+                  style={{ width: `${tool.ratio * 100}%` }}
+                />
+              </div>
+              <Num className="text-right text-muted text-[11px]">
+                {tool.count}
+              </Num>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  </aside>
+);
 
 export function RunDetailPage({
   run,
   iterations,
   events,
+  activeIterationNumber,
+  job = null,
+  task = null,
 }: {
   run: Run;
   iterations: IterationListItem[];
   events: EventListItem[];
+  activeIterationNumber?: number | null;
+  job?: Job | null;
+  task?: Task | null;
 }) {
-  const canCancel = run.status === "running";
+  const detail = buildRunDetailState({
+    activeIterationNumber,
+    events,
+    iterations,
+    run,
+  });
+  const cost = costForRun(
+    run,
+    detail.activeIteration.row ? [detail.activeIteration.row] : [],
+  );
 
   return (
-    <PageShell eyebrow="Run" title={run.name}>
-      <div className="grid gap-3 rounded-md border border-border bg-card p-4 text-sm md:grid-cols-5">
-        <div>
-          <div className="text-muted">Status</div>
-          <Status value={run.status} />
-        </div>
-        <div>
-          <div className="text-muted">Agent Provider</div>
-          <div className="text-fg">
-            {run.agentProvider}
-            {run.agentModel ? ` / ${run.agentModel}` : ""}
-          </div>
-        </div>
-        <div>
-          <div className="text-muted">Sandbox Provider</div>
-          <div className="text-fg">{run.sandboxProvider}</div>
-        </div>
-        <div>
-          <div className="text-muted">Duration</div>
-          <div className="text-fg">
-            {formatDuration(run.startedAt, run.endedAt)}
-          </div>
-        </div>
-        <div className="flex items-end md:justify-end">
-          {canCancel ? <CancelRunButton runId={run.id} /> : null}
-        </div>
+    <main className="grid min-h-[calc(100vh-3.5rem)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22.5rem]">
+      <div className="flex min-w-0 flex-col gap-5 px-7 py-6">
+        <RunHeader
+          activeIteration={detail.activeIteration}
+          events={events}
+          isMultiIteration={detail.isMultiIteration}
+          run={run}
+          task={task}
+        />
+        <IterationSwitcher
+          activeIterationNumber={detail.activeIterationNumber}
+          iterations={detail.iterations}
+        />
+        <AutoScrollTimeline
+          defaultEnabled={run.status === "running"}
+          eventCount={detail.activeIteration.eventCount}
+        >
+          <TurnRail
+            iterationTokenTotal={detail.activeIteration.tokenTotal}
+            turns={detail.turns}
+          />
+        </AutoScrollTimeline>
       </div>
-      <TokenPanel iterations={iterations} />
-      <EventTimeline events={events} iterations={iterations} />
-    </PageShell>
+      <RunRightRail
+        activeIteration={detail.activeIteration}
+        cost={cost}
+        isMultiIteration={detail.isMultiIteration}
+        iterationCount={detail.iterations.length}
+        job={job}
+        run={run}
+        task={task}
+        toolsUsed={detail.toolsUsed}
+      />
+    </main>
   );
 }
