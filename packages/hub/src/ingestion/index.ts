@@ -18,6 +18,7 @@ import {
   extractTasksFromPlannerOutput,
   type PlannerExtractionLogger,
 } from "../planner-extraction";
+import { reconcileRunningRunsForJob } from "../run-reconciliation";
 import { recomputeTaskStatus, recordRunFailureForTask } from "../task-status";
 
 const eventInputSchema = z.object({
@@ -220,6 +221,15 @@ const ingestEvent = async (
       return null;
     }
     case "job.completed": {
+      // Reconcile any still-`running` Runs first so they don't leak as
+      // orphans when the Runner exits before sending their `run.completed`
+      // (e.g. cancellation, hard exits, ralph-loop edge cases).
+      await reconcileRunningRunsForJob(tx, {
+        jobId: event.jobId,
+        endedAt: event.timestamp,
+        reason: "job-ended",
+      });
+
       // A Job is "failed" only when no Run inside it succeeded — otherwise
       // the Job produced value and is "succeeded". Overrides the
       // exit-code-derived status the CLI sends, since a top-level
