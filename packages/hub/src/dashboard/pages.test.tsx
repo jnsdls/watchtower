@@ -324,6 +324,7 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("Job detail rebuild + Job-level cancel endpoint");
     expect(markup).toContain("wt-running-stripe");
     expect(markup).toContain("bg-st-running");
+    expect(markup).toContain("border-l-st-running");
   });
 
   it("renders non-planner Job Gantt swimlanes by Run name", () => {

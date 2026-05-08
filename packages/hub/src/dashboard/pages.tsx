@@ -456,8 +456,11 @@ const JobGantt = ({
                           {run.status === "running" ? (
                             <span
                               aria-hidden="true"
-                              className="absolute top-0 right-0 bottom-0 w-0.5 animate-wt-pulse bg-st-running"
-                            />
+                              className="absolute top-0 right-0 bottom-0 flex animate-wt-pulse items-center overflow-visible"
+                            >
+                              <span className="h-full w-0.5 bg-st-running" />
+                              <span className="h-0 w-0 border-y-[4px] border-y-transparent border-l-[6px] border-l-st-running" />
+                            </span>
                           ) : null}
                         </Link>
                       );
