@@ -1,5 +1,19 @@
+diff --git a/dist/AgentProvider.d.ts b/dist/AgentProvider.d.ts
+index 66dcb0ca3e35cd60eddd7848d8d0fec2d6751265..677322b448ab77c0d054eb8fe339a52686393f44 100644
+--- a/dist/AgentProvider.d.ts
++++ b/dist/AgentProvider.d.ts
+@@ -11,6 +11,9 @@ export type ParsedStreamEvent = {
+ } | {
+     type: "session_id";
+     sessionId: string;
++} | {
++    type: "usage";
++    usage: IterationUsage;
+ };
+ /** Options passed to buildPrintCommand and buildInteractiveArgs. */
+ export interface AgentCommandOptions {
 diff --git a/dist/AgentProvider.js b/dist/AgentProvider.js
-index 041f336d092bbae46b89979b24043fbb3be95294..ae73a8b6e449ec0ea4aa7726f87224717b0f33af 100644
+index 041f336d092bbae46b89979b24043fbb3be95294..9ddcc06bb550ba3b7d7723eb09fa7b8d49dd58ef 100644
 --- a/dist/AgentProvider.js
 +++ b/dist/AgentProvider.js
 @@ -5,6 +5,18 @@ const TOOL_ARG_FIELDS = {
@@ -21,3 +35,80 @@ index 041f336d092bbae46b89979b24043fbb3be95294..ae73a8b6e449ec0ea4aa7726f8722471
  };
  /**
   * Extract an error message from a parsed JSON error event.
+@@ -186,7 +198,28 @@ const parseCodexStreamLine = (line) => {
+             const msg = extractErrorMessage(obj);
+             return msg ? [{ type: "result", result: msg }] : [];
+         }
+-        // turn.completed → skip
++        // turn.completed → extract per-turn token usage. Codex's `input_tokens`
++        // is the total prompt size (cached + non-cached); subtract the cached
++        // portion so the shape matches Anthropic's non-overlapping buckets.
++        if (obj.type === "turn.completed" &&
++            obj.usage &&
++            typeof obj.usage === "object") {
++            const u = obj.usage;
++            const inputTokens = typeof u.input_tokens === "number" ? u.input_tokens : 0;
++            const cachedInputTokens = typeof u.cached_input_tokens === "number" ? u.cached_input_tokens : 0;
++            const outputTokens = typeof u.output_tokens === "number" ? u.output_tokens : 0;
++            return [
++                {
++                    type: "usage",
++                    usage: {
++                        inputTokens: Math.max(0, inputTokens - cachedInputTokens),
++                        cacheCreationInputTokens: 0,
++                        cacheReadInputTokens: cachedInputTokens,
++                        outputTokens,
++                    },
++                },
++            ];
++        }
+     }
+     catch {
+         // Not valid JSON — skip
+diff --git a/dist/Orchestrator.js b/dist/Orchestrator.js
+index 8ba9c43ee9f020309ed77d22bf36bad7dfcdea9c..12a064159a0ade2f47cf4b4ca3f08be72c70242d 100644
+--- a/dist/Orchestrator.js
++++ b/dist/Orchestrator.js
+@@ -12,6 +12,7 @@ const IDLE_WARNING_INTERVAL_MS = 60_000;
+ const invokeAgent = (sandbox, sandboxRepoDir, prompt, provider, idleTimeoutMs, onText, onToolCall, onIdleWarning, idleWarningIntervalMs = IDLE_WARNING_INTERVAL_MS, resumeSession, signal) => Effect.gen(function* () {
+     let resultText = "";
+     let sessionId;
++    let streamUsage;
+     // Deferred that will be failed when the idle timer fires
+     const timeoutSignal = yield* Deferred.make();
+     let timeoutHandle = null;
+@@ -76,6 +77,9 @@ const invokeAgent = (sandbox, sandboxRepoDir, prompt, provider, idleTimeoutMs, o
+                     else if (parsed.type === "session_id") {
+                         sessionId = parsed.sessionId;
+                     }
++                    else if (parsed.type === "usage") {
++                        streamUsage = parsed.usage;
++                    }
+                 }
+             },
+             cwd: sandboxRepoDir,
+@@ -98,7 +102,7 @@ const invokeAgent = (sandbox, sandboxRepoDir, prompt, provider, idleTimeoutMs, o
+                 message: `${provider.name} exited with code ${execResult.exitCode}:\n${errorDetail}`,
+             }));
+         }
+-        return { result: resultText || execResult.stdout, sessionId };
++        return { result: resultText || execResult.stdout, sessionId, streamUsage };
+     }).pipe(Effect.ensuring(Effect.sync(() => {
+         if (timeoutHandle !== null) {
+             clearTimeout(timeoutHandle);
+@@ -209,13 +213,13 @@ export const orchestrate = (options) => {
+                         : `Agent idle for ${minutes} minutes`;
+                     Effect.runPromise(display.status(label(msg), "warn"));
+                 };
+-                const { result: agentOutput, sessionId } = yield* invokeAgent(ctx.sandbox, ctx.sandboxRepoDir, fullPrompt, provider, idleTimeoutMs, onText, onToolCall, onIdleWarning, options._idleWarningIntervalMs, iterationResumeSession, options.signal);
++                const { result: agentOutput, sessionId, streamUsage } = yield* invokeAgent(ctx.sandbox, ctx.sandboxRepoDir, fullPrompt, provider, idleTimeoutMs, onText, onToolCall, onIdleWarning, options._idleWarningIntervalMs, iterationResumeSession, options.signal);
+                 // Flush any remaining buffered text deltas
+                 textBuffer.dispose();
+                 yield* display.status(label("Agent stopped"), "info");
+                 // Capture session while sandbox is still alive
+                 let sessionFilePath;
+-                let usage;
++                let usage = streamUsage;
+                 if (provider.captureSessions && sessionId && bindMountHandle) {
+                     yield* display.status(label("Capturing session"), "info");
+                     const sbStore = sandboxSessionStore(ctx.sandboxRepoDir, bindMountHandle, sandboxProjectsDir);
