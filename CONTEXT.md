@@ -36,6 +36,14 @@ _Avoid_: issue, ticket, work item.
 One call to `sandcastle.run()` or `sandbox.run()`, belonging to a Job and optionally linked to a Task.
 _Avoid_: execution, attempt, call, invocation.
 
+**Iteration**:
+The bounded unit inside a Run that succeeds or fails — corresponds to one outer "do this until done" loop. A Run has ≥1 Iterations. Most Runs are one-shots (one Iteration); multi-iteration Runs only exist for retry/repair workflows (e.g. ralph loops).
+_Avoid_: attempt, retry, cycle.
+
+**Turn**:
+A single LLM cycle inside an Iteration — derived from the Event stream (a new Turn starts on each assistant `text` Event; tool-call Events belong to the most recent Turn). Turns are **unbounded** — never expose a "turns / max" counter. We do not persist Turns; the Dashboard computes them at read time.
+_Avoid_: step, loop, llm-call, message.
+
 ### Sandcastle terminology
 
 **Agent**:
@@ -85,7 +93,10 @@ _Avoid_: Mode C, cloud-cloud, SaaS.
 - A **Job** has many **Runs**.
 - A **Job** optionally has many **Tasks** (planner-driven **Templates** only).
 - A **Run** belongs to exactly one **Job**, optionally to one **Task**.
-- A **Run** has many **Events**.
+- A **Run** has ≥1 **Iterations**.
+- An **Iteration** has N **Turns** (unbounded, derived).
+- An **Iteration** has many **Events**.
+- A **Run** has many **Events** (each Event belongs to one Iteration).
 - A **Run** uses exactly one **Agent Provider** and one **Sandbox Provider**.
 - A **Runner** executes exactly one **Job** (1:1).
 - A deployment is one of **Local**, **Hybrid**, or **Cloud**.
