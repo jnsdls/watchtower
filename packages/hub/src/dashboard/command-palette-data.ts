@@ -92,7 +92,7 @@ const groupBy = <T, K>(items: readonly T[], keyOf: (item: T) => K) => {
 };
 
 const fallbackJobTitle = (job: CommandPaletteJob) =>
-  job.title ?? `Job j_${job.id.slice(0, 6)}`;
+  job.title ?? `Job ${job.id.slice(0, 6)}`;
 
 const includesQuery = (value: string | null | undefined, query: string) =>
   query.length === 0 || (value ?? "").toLowerCase().includes(query);

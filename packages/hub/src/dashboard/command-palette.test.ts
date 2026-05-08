@@ -126,6 +126,48 @@ describe("command palette data", () => {
     ).toEqual([]);
   });
 
+  it("uses the Dashboard Job title fallback when a Job has no title", () => {
+    const [job] = snapshot.jobs;
+    const [run] = snapshot.runs;
+    const [task] = snapshot.tasks;
+    if (!job || !run || !task) {
+      throw new Error("Missing command palette fixture rows");
+    }
+
+    const model = buildCommandPaletteModel(
+      {
+        ...snapshot,
+        jobs: [
+          {
+            ...job,
+            id: "abcdef12-3456-7890-abcd-ef1234567890",
+            title: null,
+          },
+        ],
+        runs: [
+          {
+            ...run,
+            id: "run-with-fallback-job",
+            jobId: "abcdef12-3456-7890-abcd-ef1234567890",
+          },
+        ],
+        tasks: [
+          {
+            ...task,
+            jobId: "abcdef12-3456-7890-abcd-ef1234567890",
+          },
+        ],
+      },
+      {
+        pathname: "/jobs/abcdef12-3456-7890-abcd-ef1234567890",
+        query: "",
+        now: new Date("2026-05-02T20:05:00.000Z"),
+      },
+    );
+
+    expect(model.jobItems[0]?.text).toBe("Job abcdef");
+  });
+
   it("cycles keyboard navigation across visible items", () => {
     expect(getNextCommandPaletteIndex(0, 4, 1)).toBe(1);
     expect(getNextCommandPaletteIndex(3, 4, 1)).toBe(0);
