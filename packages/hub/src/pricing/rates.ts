@@ -49,7 +49,7 @@ export const claudeModelRates: Record<string, ClaudeModelRate> = {
     cacheReadPerMTok: 0.5,
     cacheCreationPerMTok: 6.25,
   },
-} satisfies Record<string, ClaudeModelRate>;
+};
 
 const costForTokens = (tokens: number | null, perMTok: number) =>
   ((tokens ?? 0) * perMTok) / 1_000_000;
