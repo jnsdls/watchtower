@@ -382,40 +382,46 @@ export function ProjectDetailPage({
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => (
-                <tr
-                  className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
-                  key={job.id}
-                >
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    <Link
-                      aria-label={`Open ${formatJobTitle(job)}`}
-                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      href={`/jobs/${job.id}`}
-                    />
-                    {formatJobTitle(job)}
-                  </td>
-                  <td className="px-4 py-3 text-foreground">
-                    {formatDateTime(job.startedAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Status value={job.status} />
-                  </td>
-                  <td className="px-4 py-3 text-foreground">
-                    {formatDuration(job.startedAt, job.endedAt)}
-                  </td>
-                  <td className="px-4 py-3 text-foreground">{job.runCount}</td>
-                  <td className="px-4 py-3 text-foreground">
-                    {formatTokens(job.totalTokens)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="ml-auto size-4 text-muted-foreground"
-                    />
-                  </td>
-                </tr>
-              ))}
+              {jobs.map((job) => {
+                const title = formatJobTitle(job);
+
+                return (
+                  <tr
+                    className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
+                    key={job.id}
+                  >
+                    <td className="px-4 py-3 font-medium text-foreground">
+                      <Link
+                        aria-label={`Open ${title}`}
+                        className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        href={`/jobs/${job.id}`}
+                      />
+                      {title}
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {formatDateTime(job.startedAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Status value={job.status} />
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {formatDuration(job.startedAt, job.endedAt)}
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {job.runCount}
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {formatTokens(job.totalTokens)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ChevronRight
+                        aria-hidden="true"
+                        className="ml-auto size-4 text-muted-foreground"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
