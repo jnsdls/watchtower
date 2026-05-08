@@ -10,6 +10,30 @@ export const formatDateTime = (date: Date | null) => {
   }).format(date);
 };
 
+export const formatRelativeTime = (date: Date | null, now = new Date()) => {
+  if (!date) {
+    return "n/a";
+  }
+
+  const diffSeconds = Math.max(
+    0,
+    Math.round((now.getTime() - date.getTime()) / 1000),
+  );
+  const units = [
+    ["d", 86_400],
+    ["h", 3_600],
+    ["m", 60],
+  ] as const;
+
+  for (const [label, secondsPerUnit] of units) {
+    if (diffSeconds >= secondsPerUnit) {
+      return `${Math.floor(diffSeconds / secondsPerUnit)}${label} ago`;
+    }
+  }
+
+  return "just now";
+};
+
 export const formatDuration = (startedAt: Date, endedAt: Date | null) => {
   if (!endedAt) {
     return "running";

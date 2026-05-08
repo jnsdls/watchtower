@@ -31,6 +31,7 @@ describe("Dashboard pages", () => {
           latestActivityAt: endedAt,
           jobCount: 1,
           runCount: 1,
+          runningCount: 0,
         },
       ],
     };
@@ -155,6 +156,64 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("Cancel");
     expect(markup).toContain("checking status");
     expect(markup).toContain("Bash bun test");
+  });
+
+  it("renders the Empty Hub state when no Projects exist", () => {
+    const markup = renderToStaticMarkup(<ProjectListPage projects={[]} />);
+
+    expect(markup).toContain("Hub online");
+    expect(markup).toContain(":7777");
+    expect(markup).toContain("pglite");
+    expect(markup).toContain("Watching for runs.");
+    expect(markup).toContain("No Jobs yet.");
+    expect(markup).toContain("$");
+    expect(markup).toContain("watchtower run main.ts");
+    expect(markup).toContain("sandcastle 0.4.2 detected");
+    expect(markup).toContain("waiting for sandcastle.run()");
+    expect(markup).toContain("Read the docs");
+    expect(markup).toContain("Try a starter template");
+    expect(markup).not.toContain("Configure Hub");
+    expect(markup).not.toContain("No Projects have reported Jobs yet.");
+  });
+
+  it("renders the redesigned Project table with running counts", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectListPage
+        projects={[
+          {
+            id: projectId,
+            gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+            localPath: null,
+            displayName: "watchtower",
+            createdAt: startedAt,
+            latestActivityAt: new Date(),
+            jobCount: 2,
+            runCount: 3,
+            runningCount: 1,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000004",
+            gitRemoteUrl: "git@github.com:jnsdls/quiet.git",
+            localPath: null,
+            displayName: "quiet",
+            createdAt: startedAt,
+            latestActivityAt: endedAt,
+            jobCount: 1,
+            runCount: 1,
+            runningCount: 0,
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("2 · 1 active in last 24h");
+    expect(markup).toContain("Filter");
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain("GitHub");
+    expect(markup).toContain("1 running");
+    expect(markup).not.toContain("0 running");
+    expect(markup).toContain('href="/projects/');
+    expect(markup).toContain('aria-label="Open watchtower"');
   });
 
   it("renders planner-driven Job Gantt swimlanes by Task", () => {

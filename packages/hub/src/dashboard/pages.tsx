@@ -1,6 +1,14 @@
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  Copy,
+  FileText,
+  Filter,
+  Layers,
+  Terminal,
+} from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Button } from "../components/ui/button";
 import type {
   getJob,
   getProject,
@@ -13,8 +21,13 @@ import type {
   listTasksForJob,
 } from "../db/queries";
 import { CancelRunButton } from "./cancel-run-button";
-import { formatDateTime, formatDuration, formatTokens } from "./format";
-import { StatusPill, type StatusPillStatus } from "./primitives";
+import {
+  formatDateTime,
+  formatDuration,
+  formatRelativeTime,
+  formatTokens,
+} from "./format";
+import { Mono, Num, StatusPill, type StatusPillStatus } from "./primitives";
 
 type ProjectListItem = Awaited<
   ReturnType<typeof listProjectsByRecentActivity>
@@ -52,6 +65,18 @@ const EmptyState = ({ children }: { children: ReactNode }) => (
   <div className="rounded-md border border-border bg-card p-6 text-muted">
     {children}
   </div>
+);
+
+const GithubIcon = ({ className }: { className?: string }) => (
+  <svg
+    aria-label="GitHub"
+    className={className}
+    fill="currentColor"
+    role="img"
+    viewBox="0 0 24 24"
+  >
+    <path d="M12 .5C5.65.5.5 5.66.5 12.02c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55v-2.16c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.34.96.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.27-5.24-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18.92-.26 1.9-.39 2.88-.39.98 0 1.96.13 2.88.39 2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.74.8 1.18 1.82 1.18 3.07 0 4.4-2.69 5.36-5.25 5.65.41.36.78 1.07.78 2.16v3.2c0 .31.21.66.79.55 4.57-1.52 7.86-5.83 7.86-10.9C23.5 5.66 18.34.5 12 .5Z" />
+  </svg>
 );
 
 const statusPillValue = (value: string): StatusPillStatus | null => {
@@ -319,26 +344,51 @@ const JobGantt = ({
 };
 
 export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
+  const now = new Date();
+  const activeProjectCount = projects.filter((project) => {
+    const ageMs = now.getTime() - project.latestActivityAt.getTime();
+    return ageMs >= 0 && ageMs <= 24 * 60 * 60 * 1000;
+  }).length;
+
+  if (projects.length === 0) {
+    return <EmptyHubState />;
+  }
+
   return (
-    <PageShell eyebrow="Dashboard" title="Projects">
-      {projects.length === 0 ? (
-        <EmptyState>No Projects have reported Jobs yet.</EmptyState>
-      ) : (
-        <div className="overflow-hidden rounded-md border border-border bg-card">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-card-soft text-muted">
-              <tr>
-                <th className="px-4 py-3 font-medium">Project</th>
-                <th className="px-4 py-3 font-medium">Latest activity</th>
-                <th className="px-4 py-3 font-medium">Jobs</th>
-                <th className="px-4 py-3 font-medium">Runs</th>
-                <th className="w-12" />
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((project) => (
+    <main className="flex flex-1 flex-col gap-3.5 overflow-auto px-7 py-5">
+      <header className="flex items-baseline gap-3">
+        <h1 className="m-0 font-semibold text-[18px] text-fg">Projects</h1>
+        <Mono className="text-[12px] text-muted">
+          {projects.length} · {activeProjectCount} active in last 24h
+        </Mono>
+        <span className="flex-1" />
+        <Button disabled type="button" variant="ghost">
+          <Filter aria-hidden="true" className="size-3.5" />
+          Filter
+        </Button>
+      </header>
+
+      <div className="overflow-hidden rounded-[7px] border border-border bg-card">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead className="bg-card-soft text-[11px] text-muted uppercase">
+            <tr>
+              <th className="w-[32%] px-4 py-3 font-medium">Project</th>
+              <th className="px-4 py-3 font-medium">Latest activity</th>
+              <th className="px-4 py-3 text-right font-medium">Jobs</th>
+              <th className="px-4 py-3 text-right font-medium">Runs</th>
+              <th className="w-10" />
+            </tr>
+          </thead>
+          <tbody>
+            {projects.map((project) => {
+              const latestActivity = formatRelativeTime(
+                project.latestActivityAt,
+                now,
+              );
+
+              return (
                 <tr
-                  className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
+                  className="relative h-[38px] border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
                   key={project.id}
                 >
                   <td className="px-4 py-3">
@@ -347,18 +397,42 @@ export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
                       className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       href={`/projects/${project.id}`}
                     />
-                    <div className="font-medium text-fg">
-                      {project.displayName}
-                    </div>
-                    <div className="text-muted">
-                      {project.gitRemoteUrl ?? project.localPath ?? "n/a"}
+                    <div className="flex items-center gap-2.5">
+                      <GithubIcon className="size-3.5 shrink-0 text-muted" />
+                      <div className="flex min-w-0 flex-col gap-px">
+                        <span className="truncate font-medium text-fg">
+                          {project.displayName}
+                        </span>
+                        <Mono className="truncate text-[11px] text-muted">
+                          {project.gitRemoteUrl ?? project.localPath ?? "n/a"}
+                        </Mono>
+                      </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-fg">
-                    {formatDateTime(project.latestActivityAt)}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      {project.runningCount > 0 ? (
+                        <>
+                          <StatusPill status="running">
+                            {project.runningCount} running
+                          </StatusPill>
+                          <Mono className="text-[11px] text-muted">
+                            {latestActivity}
+                          </Mono>
+                        </>
+                      ) : (
+                        <Mono className="text-[12px] text-muted">
+                          {latestActivity}
+                        </Mono>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-fg">{project.jobCount}</td>
-                  <td className="px-4 py-3 text-fg">{project.runCount}</td>
+                  <td className="px-4 py-3 text-right text-fg">
+                    <Num>{project.jobCount}</Num>
+                  </td>
+                  <td className="px-4 py-3 text-right text-fg">
+                    <Num>{project.runCount}</Num>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <ChevronRight
                       aria-hidden="true"
@@ -366,14 +440,112 @@ export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
                     />
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </PageShell>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </main>
   );
 }
+
+const EmptyHubState = () => (
+  <main className="flex min-h-[calc(100vh-56px)] flex-1 items-center justify-center px-6 py-6">
+    <div className="flex w-full max-w-[560px] flex-col gap-[18px]">
+      <div className="flex items-center gap-2">
+        <span className="size-[7px] rounded-full bg-st-succeeded" />
+        <Mono className="text-[11px] text-muted uppercase tracking-[0.06em]">
+          Hub online · :7777 · pglite
+        </Mono>
+      </div>
+      <div>
+        <h1 className="m-0 font-semibold text-[26px] text-fg">
+          Watching for runs.
+        </h1>
+        <p className="mt-2 max-w-[480px] text-[14px] text-muted leading-[1.55]">
+          No Jobs yet. Start one from any Project with sandcastle installed -
+          this view will update as soon as data lands.
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-[7px] border border-border bg-card">
+        <div className="flex items-center gap-2 border-border border-b bg-bg-elev px-3 py-2">
+          <Terminal aria-hidden="true" className="size-3.5 text-muted" />
+          <Mono className="text-[11px] text-muted">~/code/watchtower</Mono>
+          <span className="flex-1" />
+          <Button
+            aria-label="Copy watchtower run command"
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Copy aria-hidden="true" className="size-3.5" />
+          </Button>
+        </div>
+        <div className="px-4 pt-3.5 pb-2 font-mono text-[13px] text-fg leading-[1.7]">
+          <span className="text-muted-2">$</span> watchtower run main.ts
+        </div>
+        <div className="px-4 pb-3.5 font-mono text-[12px] text-muted leading-[1.6]">
+          <div>
+            <span className="text-st-succeeded">✓</span> sandcastle 0.4.2
+            detected
+          </div>
+          <div>
+            <span className="text-st-succeeded">✓</span> reporting to{" "}
+            <Mono className="text-accent">http://localhost:7777</Mono>
+          </div>
+          <div className="text-muted-2">waiting for sandcastle.run()</div>
+        </div>
+      </div>
+      <div className="mt-1 flex flex-col overflow-hidden rounded-[7px] border border-border bg-card">
+        <EmptyHubLinkCard
+          description="Configure sandcastle, define a Job, ship one Task."
+          href="https://github.com/jnsdls/watchtower"
+          icon={<FileText aria-hidden="true" className="size-3.5" />}
+          label="Read the docs"
+          meta="github.com/jnsdls/watchtower"
+        />
+        <EmptyHubLinkCard
+          description="Plan / implement / review - adapt a starter file."
+          href="https://github.com/jnsdls/watchtower/tree/main/.sandcastle"
+          icon={<Layers aria-hidden="true" className="size-3.5" />}
+          label="Try a starter template"
+          meta=".sandcastle/main.ts"
+        />
+      </div>
+    </div>
+  </main>
+);
+
+const EmptyHubLinkCard = ({
+  description,
+  href,
+  icon,
+  label,
+  meta,
+}: {
+  description: string;
+  href: string;
+  icon: ReactNode;
+  label: string;
+  meta: string;
+}) => (
+  <a
+    className="grid grid-cols-[32px_1fr_auto] items-center gap-3 border-border border-b px-3.5 py-3 text-fg-soft transition-colors last:border-b-0 hover:bg-hover"
+    href={href}
+  >
+    <span className="inline-flex size-7 items-center justify-center rounded-[6px] border border-border bg-card-soft text-muted">
+      {icon}
+    </span>
+    <span className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-[13px] text-fg">{label}</span>
+      <Mono className="truncate text-[11px] text-muted">{description}</Mono>
+    </span>
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-2">
+      <Mono>{meta}</Mono>
+      <ChevronRight aria-hidden="true" className="size-3.5" />
+    </span>
+  </a>
+);
 
 export function ProjectDetailPage({
   project,

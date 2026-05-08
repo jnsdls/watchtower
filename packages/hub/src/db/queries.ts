@@ -111,6 +111,8 @@ export const listProjectsByRecentActivity = async (db: HubQueryDatabase) => {
         latestActivityAt,
         jobCount: projectJobs.length,
         runCount: projectRuns.length,
+        runningCount: projectRuns.filter((run) => run.status === "running")
+          .length,
       };
     })
     .sort(

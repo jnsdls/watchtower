@@ -200,9 +200,10 @@ describe("Hub db queries", () => {
       {
         id: activeProject.id,
         displayName: "watchtower",
-        latestActivityAt: newer,
+        latestActivityAt: ended,
         jobCount: 2,
         runCount: 2,
+        runningCount: 1,
       },
       {
         id: quietProject.id,
@@ -210,6 +211,7 @@ describe("Hub db queries", () => {
         latestActivityAt: quietProject.createdAt,
         jobCount: 0,
         runCount: 0,
+        runningCount: 0,
       },
     ]);
     await expect(
