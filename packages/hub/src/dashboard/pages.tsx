@@ -843,10 +843,7 @@ const TurnRail = ({
               <Mono className="text-[11px] text-fg-soft">turn {turn.n}</Mono>
               <Mono className="text-[11px] text-muted">
                 · {formatTokens(iterationTokenTotal)} tok ·{" "}
-                {formatDuration(
-                  turn.startedAt ?? new Date(0),
-                  turn.endedAt ?? turn.startedAt,
-                )}
+                {formatDuration(turn.startedAt, turn.endedAt)}
               </Mono>
             </div>
             <ol className="flex flex-col gap-2 pl-9">

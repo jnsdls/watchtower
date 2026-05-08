@@ -35,8 +35,8 @@ export type RunDetailIteration = {
 
 export type RunDetailTurn = {
   n: number;
-  startedAt: Date | null;
-  endedAt: Date | null;
+  startedAt: Date;
+  endedAt: Date;
   events: RunDetailEvent[];
 };
 
@@ -160,23 +160,22 @@ export const groupEventsByTurn = (
   events: RunDetailEvent[],
 ): RunDetailTurn[] => {
   const turns: RunDetailTurn[] = [];
+  let current: RunDetailTurn | null = null;
 
   for (const event of events) {
-    if (event.type === "text" || turns.length === 0) {
-      turns.push({
+    if (event.type === "text" || !current) {
+      current = {
         n: turns.length + 1,
         startedAt: event.timestamp,
         endedAt: event.timestamp,
         events: [event],
-      });
+      };
+      turns.push(current);
       continue;
     }
 
-    const turn = turns.at(-1);
-    if (turn) {
-      turn.events.push(event);
-      turn.endedAt = event.timestamp;
-    }
+    current.events.push(event);
+    current.endedAt = event.timestamp;
   }
 
   return turns;
@@ -301,9 +300,5 @@ export const autoScrollStateAfterScroll = (position: {
     return { enabled: true, paused: false };
   }
 
-  if (position.enabled) {
-    return { enabled: false, paused: true };
-  }
-
-  return { enabled: position.enabled, paused: true };
+  return { enabled: false, paused: true };
 };
