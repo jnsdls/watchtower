@@ -365,6 +365,44 @@ export const requestRunCancel = async (
   };
 };
 
+export const requestJobCancel = async (
+  db: HubQueryDatabase,
+  input: { id: string; requestedAt: Date },
+) => {
+  const job = await getJob(db, input.id);
+
+  if (!job) {
+    return {
+      canceledCount: 0,
+      events: [],
+      runIds: [],
+      status: "missing" as const,
+    };
+  }
+
+  const jobRuns = await listRunsForJob(db, input.id);
+  const runningRuns = jobRuns.filter((run) => run.status === "running");
+  const results = await Promise.all(
+    runningRuns.map((run) =>
+      requestRunCancel(db, { id: run.id, requestedAt: input.requestedAt }),
+    ),
+  );
+  const requestedResults = results.filter(
+    (result) => result.status === "requested" && result.run,
+  );
+
+  return {
+    canceledCount: requestedResults.length,
+    events: requestedResults
+      .map((result) => result.event)
+      .filter((event): event is NonNullable<typeof event> => event !== null),
+    runIds: requestedResults
+      .map((result) => result.run?.id)
+      .filter((id): id is string => id !== undefined),
+    status: "requested" as const,
+  };
+};
+
 export const listRuns = async (db: HubQueryDatabase) =>
   db.select().from(runs).orderBy(desc(runs.startedAt));
 
@@ -374,6 +412,30 @@ export const listRunsForJob = async (db: HubQueryDatabase, jobId: string) =>
     .from(runs)
     .where(eq(runs.jobId, jobId))
     .orderBy(desc(runs.startedAt));
+
+export const listCommandPaletteSnapshot = async (db: HubQueryDatabase) => {
+  const [projectRows, jobRows, runRows, taskRows] = await Promise.all([
+    db.select().from(projects),
+    db.select().from(jobs),
+    db.select().from(runs),
+    db.select().from(tasks),
+  ]);
+
+  return {
+    projects: projectRows,
+    jobs: jobRows.sort(
+      (left, right) =>
+        millisecondsOrZero(right.endedAt ?? right.startedAt) -
+        millisecondsOrZero(left.endedAt ?? left.startedAt),
+    ),
+    runs: runRows.sort(
+      (left, right) =>
+        millisecondsOrZero(right.endedAt ?? right.startedAt) -
+        millisecondsOrZero(left.endedAt ?? left.startedAt),
+    ),
+    tasks: taskRows,
+  };
+};
 
 export const createIteration = async (
   db: HubQueryDatabase,
