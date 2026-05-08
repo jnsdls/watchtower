@@ -138,6 +138,18 @@ const formatEstimatedCost = (cost: number | null) =>
 const formatSuccessRate = (rate: number | null) =>
   rate === null ? "n/a" : `${rate}%`;
 
+const agentProviderClass = (provider: string) => {
+  if (provider === "codex") {
+    return "text-pv-codex";
+  }
+
+  if (provider === "claudeCode") {
+    return "text-pv-claude";
+  }
+
+  return undefined;
+};
+
 const maxDate = (...dates: (Date | null | undefined)[]) =>
   dates.reduce<Date | null>((latest, date) => {
     if (!date) {
@@ -873,13 +885,7 @@ export function ProjectDetailPage({
                           </span>
                           {job.agentProvider ? (
                             <Mono
-                              className={
-                                job.agentProvider === "codex"
-                                  ? "text-pv-codex"
-                                  : job.agentProvider === "claudeCode"
-                                    ? "text-pv-claude"
-                                    : undefined
-                              }
+                              className={agentProviderClass(job.agentProvider)}
                             >
                               {job.agentProvider}
                             </Mono>
