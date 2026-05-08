@@ -245,6 +245,50 @@ describe("Hub db queries", () => {
     ]);
   });
 
+  it("counts only running Runs in Project summaries", async () => {
+    const startedAt = new Date("2030-05-03T20:00:00.000Z");
+    const project = await createProject(db, {
+      gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+      displayName: "watchtower",
+    });
+    const job = await createJob(db, {
+      projectId: project.id,
+      startedAt,
+      status: "running",
+    });
+
+    await createRun(db, {
+      jobId: job.id,
+      name: "implementer",
+      agentProvider: "codex",
+      agentModel: "gpt-5.5",
+      sandboxProvider: "docker",
+      startedAt,
+      status: "running",
+      configSnapshot: {},
+    });
+    await createRun(db, {
+      jobId: job.id,
+      name: "reviewer",
+      agentProvider: "claudeCode",
+      agentModel: "claude-opus-4-6",
+      sandboxProvider: "docker",
+      startedAt,
+      endedAt: new Date("2030-05-03T20:03:00.000Z"),
+      status: "completed",
+      configSnapshot: {},
+    });
+
+    await expect(listProjectsByRecentActivity(db)).resolves.toMatchObject([
+      {
+        id: project.id,
+        jobCount: 1,
+        runCount: 2,
+        runningCount: 1,
+      },
+    ]);
+  });
+
   it("marks an active Run canceled and emits a status Event on cancel request", async () => {
     const startedAt = new Date("2026-05-02T20:00:00.000Z");
     const requestedAt = new Date("2026-05-02T20:01:00.000Z");
