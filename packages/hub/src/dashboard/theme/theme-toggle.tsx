@@ -101,8 +101,8 @@ export function ThemeToggle() {
             aria-label={label}
             aria-pressed={isActive}
             className={cn(
-              "inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              isActive && "bg-muted text-foreground",
+              "inline-flex size-7 items-center justify-center rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+              isActive && "bg-hover text-fg",
             )}
             key={value}
             onClick={() => select(value)}

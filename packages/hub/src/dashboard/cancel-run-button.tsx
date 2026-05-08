@@ -24,7 +24,7 @@ export function CancelRunButton({ runId }: { runId: string }) {
       }}
       size="sm"
       type="button"
-      variant="outline"
+      variant="danger"
     >
       <XCircle aria-hidden="true" className="size-4" />
       Cancel

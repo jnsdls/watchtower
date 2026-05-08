@@ -230,8 +230,8 @@ describe("Dashboard pages", () => {
       'href="/runs/00000000-0000-4000-8000-000000000021"',
     );
     expect(markup).toContain('aria-label="Open implementer Run"');
-    expect(markup).toContain("bg-emerald-600");
-    expect(markup).toContain("bg-rose-600");
+    expect(markup).toContain("bg-st-succeeded");
+    expect(markup).toContain("bg-st-failed");
   });
 
   it("renders non-planner Job Gantt swimlanes by Run name", () => {
@@ -294,8 +294,8 @@ describe("Dashboard pages", () => {
     expect(markup).toContain(
       'href="/runs/00000000-0000-4000-8000-000000000031"',
     );
-    expect(markup).toContain("bg-amber-600");
-    expect(markup).toContain("bg-sky-600");
+    expect(markup).toContain("bg-st-canceled");
+    expect(markup).toContain("bg-st-running");
   });
 
   it("renders iteration boundaries and token usage on the Run detail page", () => {

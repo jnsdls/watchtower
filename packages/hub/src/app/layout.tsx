@@ -1,12 +1,26 @@
-import Link from "next/link";
+import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
+import { AppShell, buildHubBadge } from "../dashboard/app-shell";
 import { themeInitScript } from "../dashboard/theme/init-script";
-import { ThemeToggle } from "../dashboard/theme/theme-toggle";
 import "./globals.css";
+
+const geistSans = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+});
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      lang="en"
+      suppressHydrationWarning
+    >
       <head>
         {/* Apply the stored or system theme synchronously to avoid a flash. */}
         <script
@@ -14,17 +28,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           dangerouslySetInnerHTML={{ __html: themeInitScript }}
         />
       </head>
-      <body className="bg-background text-foreground">
-        <div className="border-border border-b bg-card">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
-            <Link className="font-semibold text-foreground text-sm" href="/">
-              watchtower
-            </Link>
-            <ThemeToggle />
-          </div>
-        </div>
+      <AppShell
+        hubBadge={buildHubBadge({
+          HOSTNAME: process.env.HOSTNAME,
+          PORT: process.env.PORT,
+          WATCHTOWER_PORT: process.env.WATCHTOWER_PORT,
+        })}
+      >
         {children}
-      </body>
+      </AppShell>
     </html>
   );
 }

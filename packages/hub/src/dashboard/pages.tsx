@@ -14,7 +14,7 @@ import type {
 } from "../db/queries";
 import { CancelRunButton } from "./cancel-run-button";
 import { formatDateTime, formatDuration, formatTokens } from "./format";
-import { LiveUpdates } from "./live-updates";
+import { StatusPill, type StatusPillStatus } from "./primitives";
 
 type ProjectListItem = Awaited<
   ReturnType<typeof listProjectsByRecentActivity>
@@ -40,26 +40,49 @@ const PageShell = ({
   children: ReactNode;
 }) => (
   <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
-    <LiveUpdates />
     <header className="flex flex-col gap-2 border-border border-b pb-4">
-      <p className="font-medium text-muted-foreground text-sm">{eyebrow}</p>
-      <h1 className="font-semibold text-3xl text-foreground">{title}</h1>
+      <p className="font-medium text-muted text-sm">{eyebrow}</p>
+      <h1 className="font-semibold text-3xl text-fg">{title}</h1>
     </header>
     {children}
   </main>
 );
 
 const EmptyState = ({ children }: { children: ReactNode }) => (
-  <div className="rounded-md border border-border bg-card p-6 text-muted-foreground">
+  <div className="rounded-md border border-border bg-card p-6 text-muted">
     {children}
   </div>
 );
 
-const Status = ({ value }: { value: string }) => (
-  <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 font-medium text-foreground text-xs">
-    {value}
-  </span>
-);
+const statusPillValue = (value: string): StatusPillStatus | null => {
+  switch (value) {
+    case "running":
+      return "running";
+    case "succeeded":
+    case "completed":
+      return "succeeded";
+    case "failed":
+      return "failed";
+    case "canceled":
+      return "canceled";
+    default:
+      return null;
+  }
+};
+
+const Status = ({ value }: { value: string }) => {
+  const status = statusPillValue(value);
+
+  if (status) {
+    return <StatusPill status={status}>{value}</StatusPill>;
+  }
+
+  return (
+    <span className="inline-flex h-5 items-center rounded-full border border-border bg-card-soft px-2 font-medium text-[11px] text-fg">
+      {value}
+    </span>
+  );
+};
 
 const maxDate = (...dates: (Date | null | undefined)[]) =>
   dates.reduce<Date | null>((latest, date) => {
@@ -77,16 +100,16 @@ const maxDate = (...dates: (Date | null | undefined)[]) =>
 const statusBarClass = (status: string) => {
   switch (status) {
     case "running":
-      return "bg-sky-600 hover:bg-sky-700";
+      return "bg-st-running text-bg wt-running-stripe hover:bg-st-running";
     case "succeeded":
     case "completed":
-      return "bg-emerald-600 hover:bg-emerald-700";
+      return "bg-st-succeeded text-bg hover:bg-st-succeeded";
     case "failed":
-      return "bg-rose-600 hover:bg-rose-700";
+      return "bg-st-failed text-bg hover:bg-st-failed";
     case "canceled":
-      return "bg-amber-600 hover:bg-amber-700";
+      return "bg-st-canceled text-bg hover:bg-st-canceled";
     default:
-      return "bg-slate-600 hover:bg-slate-700";
+      return "bg-muted text-bg hover:bg-muted";
   }
 };
 
@@ -197,16 +220,16 @@ const JobGantt = ({
     <section className="overflow-hidden rounded-md border border-border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-border border-b px-4 py-3">
         <div>
-          <h2 className="font-medium text-foreground">Run timeline</h2>
-          <p className="text-muted-foreground text-sm">{modeLabel}</p>
+          <h2 className="font-medium text-fg">Run timeline</h2>
+          <p className="text-muted text-sm">{modeLabel}</p>
         </div>
-        <div className="text-muted-foreground text-sm">
+        <div className="text-muted text-sm">
           {formatDateTime(job.startedAt)} - {formatDateTime(timelineEnd)}
         </div>
       </div>
       <div className="overflow-x-auto">
         <div className="min-w-[760px]">
-          <div className="grid grid-cols-[13rem_minmax(32rem,1fr)] border-border border-b bg-muted text-muted-foreground text-xs">
+          <div className="grid grid-cols-[13rem_minmax(32rem,1fr)] border-border border-b bg-card-soft text-muted text-xs">
             <div className="px-4 py-3 font-medium">Swimlane</div>
             <div className="relative px-4 py-3">
               <div className="flex justify-between">
@@ -228,11 +251,11 @@ const JobGantt = ({
                 key={lane.id}
               >
                 <div className="flex min-h-20 flex-col justify-center px-4 py-3">
-                  <div className="break-words font-medium text-foreground text-sm">
+                  <div className="break-words font-medium text-fg text-sm">
                     {lane.label}
                   </div>
                   {lane.detail ? (
-                    <div className="mt-1 break-words text-muted-foreground text-xs">
+                    <div className="mt-1 break-words text-muted text-xs">
                       {lane.detail}
                     </div>
                   ) : null}
@@ -242,7 +265,7 @@ const JobGantt = ({
                   style={{ minHeight: laneHeight }}
                 >
                   {lane.runs.length === 0 ? (
-                    <div className="flex h-full items-center text-muted-foreground text-sm">
+                    <div className="flex h-full items-center text-muted text-sm">
                       No Runs
                     </div>
                   ) : (
@@ -263,7 +286,7 @@ const JobGantt = ({
                       return (
                         <Link
                           aria-label={`Open ${run.name} Run`}
-                          className={`absolute flex h-8 items-center overflow-hidden rounded-md px-3 font-medium text-white text-xs shadow-sm transition-colors ${statusBarClass(
+                          className={`absolute flex h-8 items-center overflow-hidden rounded-md px-3 font-medium text-xs shadow-sm transition-colors ${statusBarClass(
                             run.status,
                           )}`}
                           href={`/runs/${run.id}`}
@@ -300,7 +323,7 @@ export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
       ) : (
         <div className="overflow-hidden rounded-md border border-border bg-card">
           <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-muted text-muted-foreground">
+            <thead className="bg-card-soft text-muted">
               <tr>
                 <th className="px-4 py-3 font-medium">Project</th>
                 <th className="px-4 py-3 font-medium">Latest activity</th>
@@ -312,35 +335,31 @@ export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
             <tbody>
               {projects.map((project) => (
                 <tr
-                  className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
+                  className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
                   key={project.id}
                 >
                   <td className="px-4 py-3">
                     <Link
                       aria-label={`Open ${project.displayName}`}
-                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       href={`/projects/${project.id}`}
                     />
-                    <div className="font-medium text-foreground">
+                    <div className="font-medium text-fg">
                       {project.displayName}
                     </div>
-                    <div className="text-muted-foreground">
+                    <div className="text-muted">
                       {project.gitRemoteUrl ?? project.localPath ?? "n/a"}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-foreground">
+                  <td className="px-4 py-3 text-fg">
                     {formatDateTime(project.latestActivityAt)}
                   </td>
-                  <td className="px-4 py-3 text-foreground">
-                    {project.jobCount}
-                  </td>
-                  <td className="px-4 py-3 text-foreground">
-                    {project.runCount}
-                  </td>
+                  <td className="px-4 py-3 text-fg">{project.jobCount}</td>
+                  <td className="px-4 py-3 text-fg">{project.runCount}</td>
                   <td className="px-4 py-3 text-right">
                     <ChevronRight
                       aria-hidden="true"
-                      className="ml-auto size-4 text-muted-foreground"
+                      className="ml-auto size-4 text-muted"
                     />
                   </td>
                 </tr>
@@ -367,7 +386,7 @@ export function ProjectDetailPage({
       ) : (
         <div className="overflow-hidden rounded-md border border-border bg-card">
           <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-muted text-muted-foreground">
+            <thead className="bg-card-soft text-muted">
               <tr>
                 <th className="px-4 py-3 font-medium">Started</th>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -380,13 +399,13 @@ export function ProjectDetailPage({
             <tbody>
               {jobs.map((job) => (
                 <tr
-                  className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
+                  className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
                   key={job.id}
                 >
-                  <td className="px-4 py-3 text-foreground">
+                  <td className="px-4 py-3 text-fg">
                     <Link
                       aria-label={`Open Job started ${formatDateTime(job.startedAt)}`}
-                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       href={`/jobs/${job.id}`}
                     />
                     {formatDateTime(job.startedAt)}
@@ -394,17 +413,17 @@ export function ProjectDetailPage({
                   <td className="px-4 py-3">
                     <Status value={job.status} />
                   </td>
-                  <td className="px-4 py-3 text-foreground">
+                  <td className="px-4 py-3 text-fg">
                     {formatDuration(job.startedAt, job.endedAt)}
                   </td>
-                  <td className="px-4 py-3 text-foreground">{job.runCount}</td>
-                  <td className="px-4 py-3 text-foreground">
+                  <td className="px-4 py-3 text-fg">{job.runCount}</td>
+                  <td className="px-4 py-3 text-fg">
                     {formatTokens(job.totalTokens)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <ChevronRight
                       aria-hidden="true"
-                      className="ml-auto size-4 text-muted-foreground"
+                      className="ml-auto size-4 text-muted"
                     />
                   </td>
                 </tr>
@@ -445,10 +464,10 @@ export function JobDetailPage({
       {tasks.length > 0 ? (
         <section className="overflow-hidden rounded-md border border-border bg-card">
           <div className="border-border border-b px-4 py-3">
-            <h2 className="font-medium text-foreground">Tasks</h2>
+            <h2 className="font-medium text-fg">Tasks</h2>
           </div>
           <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-muted text-muted-foreground">
+            <thead className="bg-card-soft text-muted">
               <tr>
                 <th className="px-4 py-3 font-medium">Task</th>
                 <th className="px-4 py-3 font-medium">Branch</th>
@@ -463,20 +482,16 @@ export function JobDetailPage({
                 return (
                   <tr className="border-border border-t" key={task.id}>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-foreground">
-                        {task.title}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {task.externalId}
-                      </div>
+                      <div className="font-medium text-fg">{task.title}</div>
+                      <div className="text-muted">{task.externalId}</div>
                     </td>
-                    <td className="px-4 py-3 text-foreground">
+                    <td className="px-4 py-3 text-fg">
                       {task.branch ?? "n/a"}
                     </td>
                     <td className="px-4 py-3">
                       <Status value={task.status} />
                     </td>
-                    <td className="px-4 py-3 text-foreground">
+                    <td className="px-4 py-3 text-fg">
                       {taskRuns.length === 0
                         ? "n/a"
                         : taskRuns.map((run) => run.name).join(", ")}
@@ -493,7 +508,7 @@ export function JobDetailPage({
       ) : (
         <div className="overflow-hidden rounded-md border border-border bg-card">
           <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-muted text-muted-foreground">
+            <thead className="bg-card-soft text-muted">
               <tr>
                 <th className="px-4 py-3 font-medium">Run</th>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -506,13 +521,13 @@ export function JobDetailPage({
             <tbody>
               {runs.map((run) => (
                 <tr
-                  className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
+                  className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
                   key={run.id}
                 >
-                  <td className="px-4 py-3 font-medium text-foreground">
+                  <td className="px-4 py-3 font-medium text-fg">
                     <Link
                       aria-label={`Open ${run.name} Run`}
-                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       href={`/runs/${run.id}`}
                     />
                     {run.name}
@@ -520,20 +535,18 @@ export function JobDetailPage({
                   <td className="px-4 py-3">
                     <Status value={run.status} />
                   </td>
-                  <td className="px-4 py-3 text-foreground">
+                  <td className="px-4 py-3 text-fg">
                     {run.agentProvider}
                     {run.agentModel ? ` / ${run.agentModel}` : ""}
                   </td>
-                  <td className="px-4 py-3 text-foreground">
-                    {run.sandboxProvider}
-                  </td>
-                  <td className="px-4 py-3 text-foreground">
+                  <td className="px-4 py-3 text-fg">{run.sandboxProvider}</td>
+                  <td className="px-4 py-3 text-fg">
                     {formatDuration(run.startedAt, run.endedAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <ChevronRight
                       aria-hidden="true"
-                      className="ml-auto size-4 text-muted-foreground"
+                      className="ml-auto size-4 text-muted"
                     />
                   </td>
                 </tr>
@@ -608,11 +621,11 @@ const EventRow = ({ event }: { event: EventListItem }) => (
   <li className="rounded-md border border-border bg-card p-4">
     <div className="flex flex-wrap items-center gap-3 text-sm">
       <Status value={event.type} />
-      <span className="text-muted-foreground">
+      <span className="text-muted">
         #{event.sequenceNumber} - {formatDateTime(event.timestamp)}
       </span>
     </div>
-    <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-foreground text-sm">
+    <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-card-soft p-3 text-fg text-sm">
       {eventBody(event)}
     </pre>
   </li>
@@ -621,10 +634,10 @@ const EventRow = ({ event }: { event: EventListItem }) => (
 const TokenPanel = ({ iterations }: { iterations: IterationListItem[] }) => (
   <section className="overflow-hidden rounded-md border border-border bg-card">
     <div className="border-border border-b px-4 py-3">
-      <h2 className="font-medium text-foreground">Token usage</h2>
+      <h2 className="font-medium text-fg">Token usage</h2>
     </div>
     <table className="w-full border-collapse text-left text-sm">
-      <thead className="bg-muted text-muted-foreground">
+      <thead className="bg-card-soft text-muted">
         <tr>
           <th className="px-4 py-3 font-medium">Scope</th>
           {tokenMetrics.map(([label]) => (
@@ -638,27 +651,27 @@ const TokenPanel = ({ iterations }: { iterations: IterationListItem[] }) => (
       <tbody>
         {iterations.map((iteration) => (
           <tr className="border-border border-t" key={iteration.id}>
-            <td className="px-4 py-3 font-medium text-foreground">
+            <td className="px-4 py-3 font-medium text-fg">
               Iteration {iteration.n}
             </td>
             {tokenMetrics.map(([label, metric]) => (
-              <td className="px-4 py-3 text-foreground" key={label}>
+              <td className="px-4 py-3 text-fg" key={label}>
                 {formatTokens(iteration[metric])}
               </td>
             ))}
-            <td className="px-4 py-3 text-foreground">
+            <td className="px-4 py-3 text-fg">
               {formatTokens(totalIterationTokens(iteration))}
             </td>
           </tr>
         ))}
-        <tr className="border-border border-t bg-muted">
-          <td className="px-4 py-3 font-medium text-foreground">Run total</td>
+        <tr className="border-border border-t bg-card-soft">
+          <td className="px-4 py-3 font-medium text-fg">Run total</td>
           {tokenMetrics.map(([label, metric]) => (
-            <td className="px-4 py-3 text-foreground" key={label}>
+            <td className="px-4 py-3 text-fg" key={label}>
               {formatTokens(sumIterationTokens(iterations, metric))}
             </td>
           ))}
-          <td className="px-4 py-3 text-foreground">
+          <td className="px-4 py-3 text-fg">
             {formatTokens(totalRunTokens(iterations))}
           </td>
         </tr>
@@ -720,11 +733,11 @@ const EventTimeline = ({
         const iterationEvents = eventsByIterationId.get(iteration.id) ?? [];
         return (
           <section className="flex flex-col gap-3" key={iteration.id}>
-            <div className="flex flex-wrap items-center gap-3 border-border border-l-4 bg-muted px-4 py-3 text-sm">
-              <span className="font-medium text-foreground">
+            <div className="flex flex-wrap items-center gap-3 border-border border-l-4 bg-card-soft px-4 py-3 text-sm">
+              <span className="font-medium text-fg">
                 Iteration {iteration.n}/{iterations.length}
               </span>
-              <span className="text-muted-foreground">
+              <span className="text-muted">
                 {formatDateTime(iteration.startedAt)} -{" "}
                 {formatDateTime(iteration.endedAt)}
               </span>
@@ -743,7 +756,7 @@ const EventTimeline = ({
       })}
       {unassignedEvents.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <div className="border-border border-l-4 bg-muted px-4 py-3 font-medium text-foreground text-sm">
+          <div className="border-border border-l-4 bg-card-soft px-4 py-3 font-medium text-fg text-sm">
             Unassigned Events
           </div>
           <ol className="flex flex-col gap-3">
@@ -772,23 +785,23 @@ export function RunDetailPage({
     <PageShell eyebrow="Run" title={run.name}>
       <div className="grid gap-3 rounded-md border border-border bg-card p-4 text-sm md:grid-cols-5">
         <div>
-          <div className="text-muted-foreground">Status</div>
+          <div className="text-muted">Status</div>
           <Status value={run.status} />
         </div>
         <div>
-          <div className="text-muted-foreground">Agent Provider</div>
-          <div className="text-foreground">
+          <div className="text-muted">Agent Provider</div>
+          <div className="text-fg">
             {run.agentProvider}
             {run.agentModel ? ` / ${run.agentModel}` : ""}
           </div>
         </div>
         <div>
-          <div className="text-muted-foreground">Sandbox Provider</div>
-          <div className="text-foreground">{run.sandboxProvider}</div>
+          <div className="text-muted">Sandbox Provider</div>
+          <div className="text-fg">{run.sandboxProvider}</div>
         </div>
         <div>
-          <div className="text-muted-foreground">Duration</div>
-          <div className="text-foreground">
+          <div className="text-muted">Duration</div>
+          <div className="text-fg">
             {formatDuration(run.startedAt, run.endedAt)}
           </div>
         </div>

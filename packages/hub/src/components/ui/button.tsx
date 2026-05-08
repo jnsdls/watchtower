@@ -4,22 +4,23 @@ import type * as React from "react";
 import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex h-7 items-center justify-center gap-1.5 rounded-2 border border-border px-2.5 font-medium text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        outline:
-          "border-border bg-card text-foreground hover:bg-muted hover:text-foreground",
-        ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
+        primary: "border-fg bg-fg text-bg hover:bg-fg-soft",
+        ghost:
+          "border-transparent bg-transparent text-muted hover:bg-hover hover:text-fg",
+        danger:
+          "border-st-failed-bd bg-st-failed-bg text-st-failed hover:border-st-failed hover:bg-st-failed-bg",
       },
       size: {
-        default: "h-9 px-3",
-        sm: "h-8 px-2.5 text-xs",
+        default: "h-7 px-2.5",
+        sm: "h-7 px-2 text-xs",
       },
     },
     defaultVariants: {
-      variant: "default",
+      variant: "primary",
       size: "default",
     },
   },
