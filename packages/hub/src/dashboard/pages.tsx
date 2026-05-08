@@ -598,23 +598,9 @@ export function JobDetailPage({
 
 const shortId = (prefix: string, id: string) => `${prefix}_${id.slice(0, 6)}`;
 
-const eventBody = (event: EventListItem) => {
-  if (event.type === "text") {
-    const payload = event.payload as { message?: unknown; text?: unknown };
-    return String(payload.message ?? payload.text ?? "");
-  }
-
-  if (event.type === "toolCall") {
-    const payload = event.payload as {
-      name?: unknown;
-      formattedArgs?: unknown;
-    };
-    return `${String(payload.name ?? "tool")} ${String(
-      payload.formattedArgs ?? "",
-    )}`.trim();
-  }
-
-  return JSON.stringify(event.payload);
+const textEventBody = (event: EventListItem) => {
+  const payload = event.payload as { message?: unknown; text?: unknown };
+  return String(payload.message ?? payload.text ?? "");
 };
 
 const formatUsd = (value: number | null) =>
@@ -780,7 +766,7 @@ const EventCard = ({ event }: { event: RunDetailEvent }) => {
             {timeOnly(event.timestamp)}
           </Mono>
           <div className="whitespace-pre-wrap break-words text-fg-soft text-sm leading-relaxed">
-            {eventBody(event)}
+            {textEventBody(event)}
           </div>
         </div>
       </li>

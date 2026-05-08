@@ -3,7 +3,7 @@
 import { ArrowDownToLine } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
-import { autoScrollStateAfterScroll, isNearBottom } from "./run-detail-state";
+import { autoScrollStateAfterScroll } from "./run-detail-state";
 
 export function AutoScrollTimeline({
   children,
@@ -14,7 +14,6 @@ export function AutoScrollTimeline({
   defaultEnabled: boolean;
   eventCount: number;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [enabled, setEnabled] = useState(defaultEnabled);
   const [paused, setPaused] = useState(false);
@@ -79,16 +78,9 @@ export function AutoScrollTimeline({
           setEnabled(next.enabled);
           setPaused(next.paused);
         }}
-        ref={containerRef}
       >
         {children}
-        <div
-          aria-hidden="true"
-          ref={bottomRef}
-          data-at-bottom={
-            containerRef.current ? isNearBottom(containerRef.current) : true
-          }
-        />
+        <div aria-hidden="true" ref={bottomRef} />
       </div>
     </div>
   );

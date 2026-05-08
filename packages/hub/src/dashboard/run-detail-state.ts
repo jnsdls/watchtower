@@ -106,26 +106,14 @@ const inferIterationNumbers = (
   iterations: RunDetailIterationRow[],
   events: RunDetailEvent[],
 ) => {
-  const numbers = new Set<number>();
+  const maxObserved = Math.max(
+    iterations.length,
+    ...iterations.map((iteration) => iteration.n),
+    ...events.map((event) => payloadIterationNumber(event) ?? 0),
+    1,
+  );
 
-  for (const iteration of iterations) {
-    numbers.add(iteration.n);
-  }
-
-  for (const event of events) {
-    const n = payloadIterationNumber(event);
-    if (n !== null) {
-      numbers.add(n);
-    }
-  }
-
-  const maxObserved = Math.max(...numbers, iterations.length, 1);
-
-  for (let n = 1; n <= maxObserved; n += 1) {
-    numbers.add(n);
-  }
-
-  return [...numbers].sort((left, right) => left - right);
+  return Array.from({ length: maxObserved }, (_, index) => index + 1);
 };
 
 const eventsForIteration = ({
