@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -141,6 +141,32 @@ const ensureHubReachableForRun = async (
   return ensureHubReachable(config);
 };
 
+// Remove `.watchtower-main-*` / `.watchtower-sandcastle-*` siblings of the
+// entry file. Cleanup at the end of `runWithLoader` is async and bypassed by
+// `process.exit(130)` (second SIGINT), SIGTERM/SIGKILL, and uncaught crashes,
+// so prior orphans accumulate. Sweeping at startup self-heals.
+//
+// Note: concurrent runs from the same `mainDir` would cancel each other, but
+// sandcastle is already not designed for that (shared `.sandcastle/logs/`).
+export const sweepOrphanLoaderArtifacts = async (mainDir: string) => {
+  let entries: string[];
+  try {
+    entries = await readdir(mainDir);
+  } catch {
+    return;
+  }
+
+  await Promise.all(
+    entries
+      .filter(
+        (name) =>
+          name.startsWith(".watchtower-main-") ||
+          name.startsWith(".watchtower-sandcastle-"),
+      )
+      .map((name) => rm(join(mainDir, name), { force: true })),
+  );
+};
+
 const createBunTransformedEntry = async (
   mainPath: string,
   env: NodeJS.ProcessEnv,
@@ -149,6 +175,9 @@ const createBunTransformedEntry = async (
   const tempId = randomUUID();
   const mainDir = dirname(mainPath);
   const mainExt = extname(mainPath) || ".mjs";
+
+  await sweepOrphanLoaderArtifacts(mainDir);
+
   const wrapperPath = join(mainDir, `.watchtower-sandcastle-${tempId}.mjs`);
   const entryPath = join(mainDir, `.watchtower-main-${tempId}${mainExt}`);
   const wrapperUrl = pathToFileURL(wrapperPath).href;
