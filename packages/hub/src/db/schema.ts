@@ -36,6 +36,8 @@ export const jobs = pgTable("jobs", {
   endedAt: timestamp("ended_at", { withTimezone: true }),
   status: text("status").notNull(),
   processPid: integer("process_pid"),
+  title: text("title"),
+  template: text("template"),
   watchtowerVersion: text("watchtower_version"),
 });
 

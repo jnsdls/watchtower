@@ -15,6 +15,13 @@
       "when": 1777766749385,
       "tag": "0001_cloudy_raza",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778213901844,
+      "tag": "0002_orange_jazinda",
+      "breakpoints": true
     }
   ]
 }

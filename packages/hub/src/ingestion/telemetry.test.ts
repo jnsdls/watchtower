@@ -33,6 +33,55 @@ describe("Runner telemetry ingestion", () => {
     await db.$client.close();
   });
 
+  it("persists optional Job title from lifecycle Events", async () => {
+    const titledJobId = "00000000-0000-4000-8000-000000000009";
+
+    await ingestEventBatch(db, {
+      events: [
+        {
+          type: "job.started",
+          jobId: titledJobId,
+          project: {
+            gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+            localPath: null,
+            displayName: "watchtower",
+          },
+          title: "fix: persist Job title",
+          timestamp: "2026-05-02T20:00:00.000Z",
+        },
+      ],
+    });
+
+    await expect(getJob(db, titledJobId)).resolves.toMatchObject({
+      title: "fix: persist Job title",
+      template: null,
+    });
+  });
+
+  it("continues to accept job.started without a title", async () => {
+    const untitledJobId = "00000000-0000-4000-8000-000000000010";
+
+    await ingestEventBatch(db, {
+      events: [
+        {
+          type: "job.started",
+          jobId: untitledJobId,
+          project: {
+            gitRemoteUrl: null,
+            localPath: "/tmp/watchtower",
+            displayName: "watchtower",
+          },
+          timestamp: "2026-05-02T20:00:00.000Z",
+        },
+      ],
+    });
+
+    await expect(getJob(db, untitledJobId)).resolves.toMatchObject({
+      title: null,
+      template: null,
+    });
+  });
+
   it("persists full Run telemetry from lifecycle Events", async () => {
     const runId = "00000000-0000-4000-8000-000000000008";
 

@@ -61,6 +61,9 @@ const Status = ({ value }: { value: string }) => (
   </span>
 );
 
+const formatJobTitle = (job: { id: string; title: string | null }) =>
+  job.title ?? `Job j_${job.id.slice(0, 6)}`;
+
 const maxDate = (...dates: (Date | null | undefined)[]) =>
   dates.reduce<Date | null>((latest, date) => {
     if (!date) {
@@ -369,6 +372,7 @@ export function ProjectDetailPage({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-muted text-muted-foreground">
               <tr>
+                <th className="px-4 py-3 font-medium">Job</th>
                 <th className="px-4 py-3 font-medium">Started</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Duration</th>
@@ -383,12 +387,15 @@ export function ProjectDetailPage({
                   className="relative border-border border-t transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
                   key={job.id}
                 >
-                  <td className="px-4 py-3 text-foreground">
+                  <td className="px-4 py-3 font-medium text-foreground">
                     <Link
-                      aria-label={`Open Job started ${formatDateTime(job.startedAt)}`}
+                      aria-label={`Open ${formatJobTitle(job)}`}
                       className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       href={`/jobs/${job.id}`}
                     />
+                    {formatJobTitle(job)}
+                  </td>
+                  <td className="px-4 py-3 text-foreground">
                     {formatDateTime(job.startedAt)}
                   </td>
                   <td className="px-4 py-3">
@@ -438,7 +445,7 @@ export function JobDetailPage({
   }
 
   return (
-    <PageShell eyebrow="Job" title={job.id}>
+    <PageShell eyebrow="Job" title={formatJobTitle(job)}>
       {runs.length > 0 ? (
         <JobGantt job={job} runs={runs} tasks={tasks} />
       ) : null}

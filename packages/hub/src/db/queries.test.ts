@@ -48,6 +48,7 @@ describe("Hub db queries", () => {
       status: "running",
       processPid: 1234,
       watchtowerVersion: "0.0.0",
+      title: "feat: typed Job title",
     });
     const task = await createTask(db, {
       jobId: job.id,
@@ -95,6 +96,8 @@ describe("Hub db queries", () => {
     await expect(getJob(db, job.id)).resolves.toMatchObject({
       projectId: project.id,
       status: "running",
+      title: "feat: typed Job title",
+      template: null,
     });
     await expect(getTask(db, task.id)).resolves.toMatchObject({
       externalId: "4",

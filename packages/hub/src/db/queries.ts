@@ -129,6 +129,8 @@ export const createJob = async (
     endedAt?: Date | null;
     status: string;
     processPid?: number | null;
+    title?: string | null;
+    template?: string | null;
     watchtowerVersion?: string | null;
   },
 ) => {

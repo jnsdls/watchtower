@@ -38,6 +38,7 @@ const jobStartedEventSchema = z.object({
     displayName: z.string().min(1),
   }),
   processPid: z.number().int().positive().nullable().optional(),
+  title: z.string().nullable().optional(),
   watchtowerVersion: z.string().nullable().optional(),
   timestamp: z.coerce.date(),
 });
@@ -213,6 +214,7 @@ const ingestEvent = async (
         startedAt: event.timestamp,
         status: "running",
         processPid: event.processPid ?? null,
+        title: event.title ?? null,
         watchtowerVersion: event.watchtowerVersion ?? null,
       });
       return null;
