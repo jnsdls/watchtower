@@ -84,6 +84,9 @@ const Status = ({ value }: { value: string }) => {
   );
 };
 
+const formatJobTitle = (job: { id: string; title: string | null }) =>
+  job.title ?? `Job j_${job.id.slice(0, 6)}`;
+
 const maxDate = (...dates: (Date | null | undefined)[]) =>
   dates.reduce<Date | null>((latest, date) => {
     if (!date) {
@@ -388,6 +391,7 @@ export function ProjectDetailPage({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-card-soft text-muted">
               <tr>
+                <th className="px-4 py-3 font-medium">Job</th>
                 <th className="px-4 py-3 font-medium">Started</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Duration</th>
@@ -397,37 +401,44 @@ export function ProjectDetailPage({
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => (
-                <tr
-                  className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
-                  key={job.id}
-                >
-                  <td className="px-4 py-3 text-fg">
-                    <Link
-                      aria-label={`Open Job started ${formatDateTime(job.startedAt)}`}
-                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                      href={`/jobs/${job.id}`}
-                    />
-                    {formatDateTime(job.startedAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Status value={job.status} />
-                  </td>
-                  <td className="px-4 py-3 text-fg">
-                    {formatDuration(job.startedAt, job.endedAt)}
-                  </td>
-                  <td className="px-4 py-3 text-fg">{job.runCount}</td>
-                  <td className="px-4 py-3 text-fg">
-                    {formatTokens(job.totalTokens)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="ml-auto size-4 text-muted"
-                    />
-                  </td>
-                </tr>
-              ))}
+              {jobs.map((job) => {
+                const title = formatJobTitle(job);
+
+                return (
+                  <tr
+                    className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
+                    key={job.id}
+                  >
+                    <td className="px-4 py-3 font-medium text-fg">
+                      <Link
+                        aria-label={`Open ${title}`}
+                        className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        href={`/jobs/${job.id}`}
+                      />
+                      {title}
+                    </td>
+                    <td className="px-4 py-3 text-fg">
+                      {formatDateTime(job.startedAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Status value={job.status} />
+                    </td>
+                    <td className="px-4 py-3 text-fg">
+                      {formatDuration(job.startedAt, job.endedAt)}
+                    </td>
+                    <td className="px-4 py-3 text-fg">{job.runCount}</td>
+                    <td className="px-4 py-3 text-fg">
+                      {formatTokens(job.totalTokens)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ChevronRight
+                        aria-hidden="true"
+                        className="ml-auto size-4 text-muted"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -457,7 +468,7 @@ export function JobDetailPage({
   }
 
   return (
-    <PageShell eyebrow="Job" title={job.id}>
+    <PageShell eyebrow="Job" title={formatJobTitle(job)}>
       {runs.length > 0 ? (
         <JobGantt job={job} runs={runs} tasks={tasks} />
       ) : null}

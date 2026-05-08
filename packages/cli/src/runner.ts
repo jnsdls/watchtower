@@ -11,6 +11,7 @@ import {
   resolveHubConfig,
 } from "./hub-bootstrap.ts";
 import { completeWatchtowerJob, startWatchtowerJob } from "./hub-client.ts";
+import { resolveJobTitle } from "./job-title.ts";
 import { createWrappedSandcastleModuleSource } from "./loader-module-source.ts";
 import { identifyProject } from "./project-id.ts";
 import { installSigintHandler } from "./signals.ts";
@@ -22,6 +23,7 @@ export type RunnerOptions = {
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly hubUrl?: string;
+  readonly title?: string;
   readonly stdin?: NodeJS.ReadableStream;
   readonly stdout?: NodeJS.WritableStream;
   readonly stderr?: NodeJS.WritableStream;
@@ -203,6 +205,7 @@ const formatErrorMessage = (error: unknown) =>
 const startTelemetryJobOrLog = async (
   hubConfig: HubConfig,
   cwd: string,
+  titleOverride: string | undefined,
   stdin: NodeJS.ReadableStream,
   stderr: NodeJS.WritableStream,
 ) => {
@@ -211,6 +214,7 @@ const startTelemetryJobOrLog = async (
     return await startWatchtowerJob({
       hubUrl: hubConfig.url,
       project: await identifyProject(cwd),
+      title: await resolveJobTitle(cwd, titleOverride),
     });
   } catch (error) {
     stderr.write(
@@ -245,7 +249,13 @@ export const runWithLoader = async (
   const telemetryJobId =
     baseEnv.WATCHTOWER_TELEMETRY_DISABLED === "1"
       ? ""
-      : await startTelemetryJobOrLog(hubConfig, cwd, stdin, stderr);
+      : await startTelemetryJobOrLog(
+          hubConfig,
+          cwd,
+          options.title,
+          stdin,
+          stderr,
+        );
 
   const env = {
     ...baseEnv,

@@ -21,6 +21,7 @@ type TelemetryEvent =
         readonly displayName: string;
       };
       readonly processPid: number | null;
+      readonly title: string | null;
       readonly watchtowerVersion: string | null;
       readonly timestamp: string;
     }
@@ -84,6 +85,7 @@ export type StartWatchtowerJobOptions = {
     readonly localPath: string | null;
     readonly displayName: string;
   };
+  readonly title?: string | null;
   readonly fetch?: Fetch;
 };
 
@@ -112,6 +114,7 @@ export const startWatchtowerJob = async ({
   fetch: fetchImplementation,
   hubUrl,
   project,
+  title,
 }: StartWatchtowerJobOptions) => {
   const jobId = randomUUID();
   await postTelemetryEvents(
@@ -122,6 +125,7 @@ export const startWatchtowerJob = async ({
         jobId,
         project,
         processPid: process.pid,
+        title: title ?? null,
         watchtowerVersion: packageJson.version,
         timestamp: new Date().toISOString(),
       },

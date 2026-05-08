@@ -51,6 +51,8 @@ describe("Dashboard pages", () => {
           status: "completed",
           processPid: null,
           watchtowerVersion: null,
+          title: "fix: Dashboard Job title",
+          template: null,
           runCount: 1,
           totalTokens: 140,
         },
@@ -65,6 +67,8 @@ describe("Dashboard pages", () => {
         status: "completed",
         processPid: null,
         watchtowerVersion: null,
+        title: "fix: Dashboard Job title",
+        template: null,
       },
       tasks: [
         {
@@ -138,6 +142,7 @@ describe("Dashboard pages", () => {
     ].join("\n");
 
     expect(markup).toContain("watchtower");
+    expect(markup).toContain("fix: Dashboard Job title");
     expect(markup).toContain("completed");
     expect(markup).toContain("140");
     expect(markup).toContain("implementer");
@@ -164,6 +169,8 @@ describe("Dashboard pages", () => {
           status: "completed",
           processPid: null,
           watchtowerVersion: null,
+          title: null,
+          template: null,
         }}
         runs={[
           {
@@ -245,6 +252,8 @@ describe("Dashboard pages", () => {
           status: "completed",
           processPid: null,
           watchtowerVersion: null,
+          title: null,
+          template: null,
         }}
         runs={[
           {

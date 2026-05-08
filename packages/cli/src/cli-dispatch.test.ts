@@ -48,6 +48,7 @@ describe("cli-dispatch", () => {
         name: "run",
         mainPath: ".sandcastle/main.ts",
         hubUrl: undefined,
+        title: undefined,
         open: true,
       },
       {
@@ -145,7 +146,31 @@ describe("cli-dispatch", () => {
         name: "run",
         mainPath: ".sandcastle/main.ts",
         hubUrl: "http://127.0.0.1:7788",
+        title: undefined,
         open: false,
+      },
+    ]);
+  });
+
+  it("parses run -m as a Job title override", async () => {
+    const { calls, handlers } = createRecorder();
+
+    await expect(
+      dispatchCli(
+        ["run", ".sandcastle/main.ts", "-m", "fix: manual Job title"],
+        {
+          handlers,
+        },
+      ),
+    ).resolves.toBe(7);
+
+    expect(calls).toEqual([
+      {
+        name: "run",
+        mainPath: ".sandcastle/main.ts",
+        hubUrl: undefined,
+        title: "fix: manual Job title",
+        open: true,
       },
     ]);
   });

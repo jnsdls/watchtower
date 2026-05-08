@@ -13,6 +13,7 @@ export type RunCommand = {
   name: "run";
   mainPath: string;
   hubUrl?: string;
+  title?: string;
   open: boolean;
 };
 
@@ -59,7 +60,7 @@ export type DispatchOptions = {
 const helpText = `Usage: watchtower <command>
 
 Commands:
-  watchtower run [--hub <url>] [--no-open] <main.ts>
+  watchtower run [--hub <url>] [--no-open] [-m <title>] <main.ts>
   watchtower hub start [--detach]
   watchtower hub stop
   watchtower hub status
@@ -74,7 +75,10 @@ const createDefaultHandlers = (
       hubUrl: command.hubUrl,
       open: command.open,
     });
-    return runWithLoader(command.mainPath, { hubUrl: command.hubUrl });
+    return runWithLoader(command.mainPath, {
+      hubUrl: command.hubUrl,
+      title: command.title,
+    });
   },
   hubStart: async (command) => {
     const config = resolveHubConfig();
@@ -154,6 +158,7 @@ export const dispatchCli = async (
     const args = argv.slice(1);
     let mainPath: string | undefined;
     let hubUrl: string | undefined;
+    let title: string | undefined;
     let open = true;
 
     for (let index = 0; index < args.length; index += 1) {
@@ -177,6 +182,19 @@ export const dispatchCli = async (
         continue;
       }
 
+      if (argument === "-m") {
+        const value = args[index + 1];
+
+        if (value === undefined) {
+          stderr(`Missing required value: -m <title>\n\n${helpText}`);
+          return 1;
+        }
+
+        title = value;
+        index += 1;
+        continue;
+      }
+
       if (mainPath === undefined) {
         mainPath = argument;
         continue;
@@ -195,6 +213,7 @@ export const dispatchCli = async (
       name: "run",
       mainPath,
       hubUrl,
+      title,
       open,
     });
   }

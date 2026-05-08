@@ -1,7 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
-import { createWatchtowerHubClient } from "./hub-client";
+import { createWatchtowerHubClient, startWatchtowerJob } from "./hub-client";
 
 describe("hub-client", () => {
+  it("posts a Job title when starting telemetry", async () => {
+    const bodies: unknown[] = [];
+    const fetch = vi.fn(async (_url: URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ ok: true }), { status: 201 });
+    });
+
+    await startWatchtowerJob({
+      fetch,
+      hubUrl: "http://127.0.0.1:7777",
+      project: {
+        gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+        localPath: null,
+        displayName: "watchtower",
+      },
+      title: "fix: expose Job title",
+    });
+
+    expect(bodies).toMatchObject([
+      {
+        events: [
+          {
+            type: "job.started",
+            title: "fix: expose Job title",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("posts lifecycle telemetry in order and batches stream Events", async () => {
     const bodies: unknown[] = [];
     const fetch = vi.fn(async (_url: URL, init?: RequestInit) => {
