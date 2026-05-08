@@ -13,7 +13,7 @@ export const POST = async (
   const { jobId } = await params;
   const db = await getHubDatabase();
   const result = await requestJobCancel(db, {
-    jobId,
+    id: jobId,
     requestedAt: new Date(),
   });
 
@@ -21,8 +21,8 @@ export const POST = async (
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
-  for (const run of result.runs) {
-    cancelCoordinator.requestCancel(run.id);
+  for (const runId of result.runIds) {
+    cancelCoordinator.requestCancel(runId);
   }
 
   if (result.events.length > 0) {
@@ -30,8 +30,7 @@ export const POST = async (
   }
 
   return NextResponse.json({
-    cancelRequested: result.cancelledCount > 0,
-    cancelledCount: result.cancelledCount,
+    canceledCount: result.canceledCount,
     jobId,
     status: result.status,
   });

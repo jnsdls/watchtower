@@ -1,10 +1,10 @@
 "use client";
 
-import { Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { buildBreadcrumbs } from "./app-shell-data";
-import { Kbd, Mono } from "./primitives";
+import { CommandPalette } from "./command-palette";
+import { Mono } from "./primitives";
 import { ThemeToggle } from "./theme/theme-toggle";
 
 export function TopBar({ hubBadge }: { hubBadge: string }) {
@@ -59,16 +59,7 @@ export function TopBar({ hubBadge }: { hubBadge: string }) {
 
       <div className="flex-1" />
 
-      <button
-        className="hidden h-[26px] min-w-[220px] items-center gap-2 rounded-md border border-border bg-card px-2 text-muted text-xs transition-colors hover:border-border-strong hover:bg-hover hover:text-fg md:inline-flex"
-        type="button"
-      >
-        <Search aria-hidden="true" className="size-3.5" />
-        <span>Search Projects, Jobs, Runs</span>
-        <span className="flex-1" />
-        <Kbd>⌘</Kbd>
-        <Kbd>K</Kbd>
-      </button>
+      <CommandPalette />
 
       <ThemeToggle />
     </header>

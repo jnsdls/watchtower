@@ -14,6 +14,7 @@ import {
   getProject,
   getRun,
   getTask,
+  listCommandPaletteSnapshot,
   listEventsForRun,
   listIterationsForRun,
   listJobsForProjectSummary,
@@ -330,6 +331,80 @@ describe("Hub db queries", () => {
     });
   });
 
+  it("builds the command palette snapshot and cancels running Runs in a Job", async () => {
+    const startedAt = new Date("2026-05-02T20:00:00.000Z");
+    const endedAt = new Date("2026-05-02T20:04:00.000Z");
+    const requestedAt = new Date("2026-05-02T20:05:00.000Z");
+    const project = await createProject(db, {
+      gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+      displayName: "watchtower",
+    });
+    const job = await createJob(db, {
+      projectId: project.id,
+      startedAt,
+      status: "running",
+      title: "fix: command palette",
+    });
+    const task = await createTask(db, {
+      jobId: job.id,
+      externalId: "22",
+      title: "CmdK command palette",
+      branch: "sandcastle/issue-22-cmdk-command-palette",
+      status: "in_progress",
+    });
+    const runningRun = await createRun(db, {
+      jobId: job.id,
+      taskId: task.id,
+      name: "implementer",
+      agentProvider: "codex",
+      agentModel: "gpt-5.5",
+      sandboxProvider: "docker",
+      branch: task.branch,
+      startedAt,
+      status: "running",
+      configSnapshot: {},
+    });
+    const completedRun = await createRun(db, {
+      jobId: job.id,
+      taskId: task.id,
+      name: "reviewer",
+      agentProvider: "claudeCode",
+      sandboxProvider: "docker",
+      startedAt,
+      endedAt,
+      status: "completed",
+      configSnapshot: {},
+    });
+
+    await expect(listCommandPaletteSnapshot(db)).resolves.toMatchObject({
+      projects: [{ id: project.id, displayName: "watchtower" }],
+      jobs: [{ id: job.id, title: "fix: command palette" }],
+      tasks: [{ id: task.id, title: "CmdK command palette" }],
+      runs: [
+        { id: completedRun.id, name: "reviewer" },
+        { id: runningRun.id, name: "implementer" },
+      ],
+    });
+
+    await expect(
+      requestJobCancel(db, { id: job.id, requestedAt }),
+    ).resolves.toMatchObject({
+      canceledCount: 1,
+      runIds: [runningRun.id],
+      status: "requested",
+    });
+    await expect(getRun(db, runningRun.id)).resolves.toMatchObject({
+      cancelRequested: true,
+      endedAt: requestedAt,
+      status: "canceled",
+    });
+    await expect(getRun(db, completedRun.id)).resolves.toMatchObject({
+      cancelRequested: false,
+      endedAt,
+      status: "completed",
+    });
+  });
+
   it("does not change a completed Run when cancel is requested later", async () => {
     const startedAt = new Date("2026-05-02T20:00:00.000Z");
     const endedAt = new Date("2026-05-02T20:01:00.000Z");
@@ -403,11 +478,11 @@ describe("Hub db queries", () => {
     });
 
     await expect(
-      requestJobCancel(db, { jobId: job.id, requestedAt }),
+      requestJobCancel(db, { id: job.id, requestedAt }),
     ).resolves.toMatchObject({
       status: "requested",
-      cancelledCount: 1,
-      runs: [{ id: runningRun.id, status: "canceled" }],
+      canceledCount: 1,
+      runIds: [runningRun.id],
       events: [
         {
           runId: runningRun.id,

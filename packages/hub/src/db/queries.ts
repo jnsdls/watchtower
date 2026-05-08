@@ -369,47 +369,36 @@ export const requestRunCancel = async (
 
 export const requestJobCancel = async (
   db: HubQueryDatabase,
-  input: { jobId: string; requestedAt: Date },
+  input: { id: string; requestedAt: Date },
 ) => {
-  const job = await getJob(db, input.jobId);
+  const job = await getJob(db, input.id);
 
   if (!job) {
     return {
-      status: "missing" as const,
-      cancelledCount: 0,
-      runs: [],
+      canceledCount: 0,
       events: [],
+      runIds: [],
+      status: "missing" as const,
     };
   }
 
-  const runningRuns = await db
-    .select()
-    .from(runs)
-    .where(and(eq(runs.jobId, input.jobId), eq(runs.status, "running")))
-    .orderBy(runs.startedAt);
-  const requestedRuns = [];
-  const emittedEvents = [];
-
-  for (const run of runningRuns) {
-    const result = await requestRunCancel(db, {
-      id: run.id,
-      requestedAt: input.requestedAt,
-    });
-
-    if (result.status === "requested" && result.run) {
-      requestedRuns.push(result.run);
-    }
-
-    if (result.event) {
-      emittedEvents.push(result.event);
-    }
-  }
+  const jobRuns = await listRunsForJob(db, input.id);
+  const runningRuns = jobRuns.filter((run) => run.status === "running");
+  const results = await Promise.all(
+    runningRuns.map((run) =>
+      requestRunCancel(db, { id: run.id, requestedAt: input.requestedAt }),
+    ),
+  );
+  const requested = results.filter(
+    (result): result is Extract<typeof result, { status: "requested" }> =>
+      result.status === "requested",
+  );
 
   return {
+    canceledCount: requested.length,
+    events: requested.flatMap((result) => (result.event ? [result.event] : [])),
+    runIds: requested.map((result) => result.run.id),
     status: "requested" as const,
-    cancelledCount: requestedRuns.length,
-    runs: requestedRuns,
-    events: emittedEvents,
   };
 };
 
@@ -422,6 +411,30 @@ export const listRunsForJob = async (db: HubQueryDatabase, jobId: string) =>
     .from(runs)
     .where(eq(runs.jobId, jobId))
     .orderBy(desc(runs.startedAt));
+
+export const listCommandPaletteSnapshot = async (db: HubQueryDatabase) => {
+  const [projectRows, jobRows, runRows, taskRows] = await Promise.all([
+    db.select().from(projects),
+    db.select().from(jobs),
+    db.select().from(runs),
+    db.select().from(tasks),
+  ]);
+
+  return {
+    projects: projectRows,
+    jobs: jobRows.sort(
+      (left, right) =>
+        millisecondsOrZero(right.endedAt ?? right.startedAt) -
+        millisecondsOrZero(left.endedAt ?? left.startedAt),
+    ),
+    runs: runRows.sort(
+      (left, right) =>
+        millisecondsOrZero(right.endedAt ?? right.startedAt) -
+        millisecondsOrZero(left.endedAt ?? left.startedAt),
+    ),
+    tasks: taskRows,
+  };
+};
 
 export const createIteration = async (
   db: HubQueryDatabase,

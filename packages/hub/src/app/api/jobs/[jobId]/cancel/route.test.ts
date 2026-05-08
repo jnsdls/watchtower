@@ -37,8 +37,8 @@ describe("POST /api/jobs/[jobId]/cancel", () => {
     getHubDatabase.mockResolvedValue(db);
     requestJobCancel.mockResolvedValue({
       status: "requested",
-      cancelledCount: 2,
-      runs: [{ id: "run-1" }, { id: "run-2" }],
+      canceledCount: 2,
+      runIds: ["run-1", "run-2"],
       events: [event],
     });
     const { POST } = await import("./route");
@@ -48,13 +48,12 @@ describe("POST /api/jobs/[jobId]/cancel", () => {
     });
 
     await expect(response.json()).resolves.toEqual({
-      cancelledCount: 2,
-      cancelRequested: true,
+      canceledCount: 2,
       jobId: "job-1",
       status: "requested",
     });
     expect(requestJobCancel).toHaveBeenCalledWith(db, {
-      jobId: "job-1",
+      id: "job-1",
       requestedAt: expect.any(Date),
     });
     expect(requestCancel).toHaveBeenCalledWith("run-1");
