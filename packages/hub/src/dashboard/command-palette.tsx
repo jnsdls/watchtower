@@ -99,19 +99,6 @@ export function CommandPalette() {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
-
   const model = useMemo(
     () =>
       snapshot
@@ -139,7 +126,14 @@ export function CommandPalette() {
     ],
     [model],
   );
-  const flatItems = groups.flatMap((group) => group.items);
+  const flatItems = useMemo(
+    () => groups.flatMap((group) => group.items),
+    [groups],
+  );
+  const indexById = useMemo(
+    () => new Map(flatItems.map((item, index) => [item.id, index])),
+    [flatItems],
+  );
 
   useEffect(() => {
     setSelectedIndex(flatItems.length > 0 ? 0 : -1);
@@ -190,8 +184,6 @@ export function CommandPalette() {
       }
     }
   };
-
-  let cursor = 0;
 
   return (
     <Dialog.Root onOpenChange={setOpen} open={open}>
@@ -250,9 +242,8 @@ export function CommandPalette() {
                       ) : null}
                     </div>
                     {group.items.map((item) => {
-                      const itemIndex = cursor;
+                      const itemIndex = indexById.get(item.id) ?? -1;
                       const selected = itemIndex === selectedIndex;
-                      cursor += 1;
 
                       return (
                         <button
