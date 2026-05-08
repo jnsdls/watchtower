@@ -1,7 +1,14 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
   "files": {
-    "includes": ["**", "!bun.lock", "!node_modules", "!**/.next"]
+    "includes": [
+      "**",
+      "!bun.lock",
+      "!node_modules",
+      "!**/.next",
+      "!docs/design/project",
+      "!.sandcastle"
+    ]
   },
   "formatter": {
     "enabled": true,
