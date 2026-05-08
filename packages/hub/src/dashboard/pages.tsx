@@ -206,11 +206,6 @@ const buildGanttLanes = ({
     };
   }
 
-  const earliestStart = (lane: GanttLane) =>
-    lane.runs.length === 0
-      ? Number.POSITIVE_INFINITY
-      : Math.min(...lane.runs.map((run) => run.startedAt.getTime()));
-
   if (mode === "task" && tasks.length > 0) {
     const tasksById = new Map(tasks.map((task) => [task.id, task]));
     const taskLanes = tasks.map<GanttLane>((task) => ({
@@ -230,6 +225,10 @@ const buildGanttLanes = ({
         detail: null,
         runs: assignTracks([run], timelineEnd),
       }));
+    const earliestStart = (lane: GanttLane) =>
+      lane.runs.length === 0
+        ? Number.POSITIVE_INFINITY
+        : Math.min(...lane.runs.map((run) => run.startedAt.getTime()));
 
     return {
       modeLabel: "Task lanes",
@@ -343,11 +342,13 @@ const JobGantt = ({
         </div>
         <div className="flex items-center gap-3">
           <div className="inline-flex rounded-[5px] border border-border bg-card-soft p-0.5">
-            {[
-              ["task", "Task lanes"],
-              ["runName", "Run name"],
-              ["flat", "Flat"],
-            ].map(([candidateMode, label]) => (
+            {(
+              [
+                ["task", "Task lanes"],
+                ["runName", "Run name"],
+                ["flat", "Flat"],
+              ] satisfies [GanttMode, string][]
+            ).map(([candidateMode, label]) => (
               <Link
                 className={`rounded-[3px] px-2 py-0.5 text-[11px] ${
                   candidateMode === mode
@@ -681,112 +682,122 @@ export function JobDetailPage({
           {job.status === "running" ? <CancelJobButton jobId={job.id} /> : null}
         </div>
       </header>
-      {runs.length > 0 ? (
-        <JobGantt job={job} mode={activeGanttMode} runs={runs} tasks={tasks} />
-      ) : null}
       {runs.length === 0 ? (
         <EmptyState>No Runs have been captured for this Job.</EmptyState>
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
-          <section className="overflow-hidden rounded-md border border-border bg-card">
-            <div className="flex items-center gap-2 border-border border-b px-4 py-2.5">
-              <h2 className="font-medium text-[13px] text-fg">Tasks</h2>
-              <Mono className="text-[11px] text-muted">
-                {tasks.length} · from planner
-              </Mono>
-            </div>
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-card-soft text-muted text-[11px] uppercase">
-                <tr>
-                  <th className="px-3 py-2 font-medium">#</th>
-                  <th className="px-3 py-2 font-medium">Title</th>
-                  <th className="px-3 py-2 font-medium">Branch</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 text-right font-medium">Runs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((task, index) => (
-                  <tr className="h-[38px] border-border border-t" key={task.id}>
-                    <td className="px-3 py-2">
-                      <Mono className="text-muted">
-                        {String(index + 1).padStart(2, "0")}
-                      </Mono>
-                    </td>
-                    <td className="px-3 py-2 font-medium text-fg">
-                      {task.title}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Mono className="text-[11px] text-muted">
-                        {task.branch ?? "—"}
-                      </Mono>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Status value={task.status} />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Num>{runsByTaskId.get(task.id)?.length ?? 0}</Num>
-                    </td>
+        <>
+          <JobGantt
+            job={job}
+            mode={activeGanttMode}
+            runs={runs}
+            tasks={tasks}
+          />
+          <div className="grid gap-3 xl:grid-cols-2">
+            <section className="overflow-hidden rounded-md border border-border bg-card">
+              <div className="flex items-center gap-2 border-border border-b px-4 py-2.5">
+                <h2 className="font-medium text-[13px] text-fg">Tasks</h2>
+                <Mono className="text-[11px] text-muted">
+                  {tasks.length} · from planner
+                </Mono>
+              </div>
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-card-soft text-muted text-[11px] uppercase">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">#</th>
+                    <th className="px-3 py-2 font-medium">Title</th>
+                    <th className="px-3 py-2 font-medium">Branch</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 text-right font-medium">Runs</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-          <section className="overflow-hidden rounded-md border border-border bg-card">
-            <div className="flex items-center gap-2 border-border border-b px-4 py-2.5">
-              <h2 className="font-medium text-[13px] text-fg">Runs</h2>
-              <Mono className="text-[11px] text-muted">{runs.length}</Mono>
-            </div>
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-card-soft text-muted text-[11px] uppercase">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">Task</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Iters</th>
-                  <th className="px-3 py-2 text-right font-medium">Dur</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((run) => (
-                  <tr
-                    className="relative h-[38px] border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
-                    key={run.id}
-                  >
-                    <td className="px-3 py-2">
-                      <Link
-                        aria-label={`Open ${run.name} Run`}
-                        className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                        href={`/runs/${run.id}`}
-                      />
-                      <Mono className="inline-flex items-center gap-1.5 text-fg">
-                        <span
-                          aria-hidden="true"
-                          className="size-1.5 rounded-full bg-muted"
+                </thead>
+                <tbody>
+                  {tasks.map((task, index) => (
+                    <tr
+                      className="h-[38px] border-border border-t"
+                      key={task.id}
+                    >
+                      <td className="px-3 py-2">
+                        <Mono className="text-muted">
+                          {String(index + 1).padStart(2, "0")}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2 font-medium text-fg">
+                        {task.title}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Mono className="text-[11px] text-muted">
+                          {task.branch ?? "—"}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Status value={task.status} />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Num>{runsByTaskId.get(task.id)?.length ?? 0}</Num>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+            <section className="overflow-hidden rounded-md border border-border bg-card">
+              <div className="flex items-center gap-2 border-border border-b px-4 py-2.5">
+                <h2 className="font-medium text-[13px] text-fg">Runs</h2>
+                <Mono className="text-[11px] text-muted">{runs.length}</Mono>
+              </div>
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-card-soft text-muted text-[11px] uppercase">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Name</th>
+                    <th className="px-3 py-2 font-medium">Task</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Iters</th>
+                    <th className="px-3 py-2 text-right font-medium">Dur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((run) => (
+                    <tr
+                      className="relative h-[38px] border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
+                      key={run.id}
+                    >
+                      <td className="px-3 py-2">
+                        <Link
+                          aria-label={`Open ${run.name} Run`}
+                          className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                          href={`/runs/${run.id}`}
                         />
-                        {run.name}
-                      </Mono>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Mono className="text-[11px] text-muted">
-                        {taskLabelForRun(run, tasksById)}
-                      </Mono>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Status value={run.status} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Num>{run.maxIterations ?? "—"}</Num>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Mono>{formatDuration(run.startedAt, run.endedAt)}</Mono>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        </div>
+                        <Mono className="inline-flex items-center gap-1.5 text-fg">
+                          <span
+                            aria-hidden="true"
+                            className="size-1.5 rounded-full bg-muted"
+                          />
+                          {run.name}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Mono className="text-[11px] text-muted">
+                          {taskLabelForRun(run, tasksById)}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Status value={run.status} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Num>{run.maxIterations ?? "—"}</Num>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Mono>
+                          {formatDuration(run.startedAt, run.endedAt)}
+                        </Mono>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </div>
+        </>
       )}
     </main>
   );
