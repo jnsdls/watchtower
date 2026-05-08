@@ -344,15 +344,15 @@ const JobGantt = ({
 };
 
 export function ProjectListPage({ projects }: { projects: ProjectListItem[] }) {
+  if (projects.length === 0) {
+    return <EmptyHubState />;
+  }
+
   const now = new Date();
   const activeProjectCount = projects.filter((project) => {
     const ageMs = now.getTime() - project.latestActivityAt.getTime();
     return ageMs >= 0 && ageMs <= 24 * 60 * 60 * 1000;
   }).length;
-
-  if (projects.length === 0) {
-    return <EmptyHubState />;
-  }
 
   return (
     <main className="flex flex-1 flex-col gap-3.5 overflow-auto px-7 py-5">
