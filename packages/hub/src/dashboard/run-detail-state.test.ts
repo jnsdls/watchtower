@@ -160,6 +160,44 @@ describe("Run detail state", () => {
     expect(state.isMultiIteration).toBe(false);
   });
 
+  it("keeps the active Iteration open while the Run is running", () => {
+    const eventTimestamp = new Date("2026-05-02T20:01:00.000Z");
+    const state = buildRunDetailState({
+      events: [
+        {
+          id: "00000000-0000-4000-8000-000000000008",
+          sequenceNumber: 1,
+          runId,
+          iterationId: null,
+          type: "text",
+          payload: { message: "still working" },
+          timestamp: eventTimestamp,
+        },
+      ],
+      iterations: [],
+      run: {
+        id: runId,
+        jobId: "00000000-0000-4000-8000-000000000002",
+        taskId: null,
+        name: "implementer",
+        agentProvider: "codex",
+        agentModel: "gpt-5.5",
+        sandboxProvider: "docker",
+        branch: null,
+        maxIterations: 1,
+        startedAt,
+        endedAt: null,
+        status: "running",
+        cancelRequested: false,
+        completionSignal: null,
+        configSnapshot: {},
+        errorMessage: null,
+      },
+    });
+
+    expect(state.activeIteration.endedAt).toBeNull();
+  });
+
   it("pauses auto-scroll when the user scrolls away from the bottom", () => {
     expect(
       autoScrollStateAfterScroll({

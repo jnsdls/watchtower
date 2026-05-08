@@ -156,6 +156,32 @@ const eventsForIteration = ({
     return totalIterations === 1 && iteration.n === 1;
   });
 
+const inferredIterationEnd = ({
+  events,
+  isLastIteration,
+  row,
+  run,
+}: {
+  events: RunDetailEvent[];
+  isLastIteration: boolean;
+  row: RunDetailIterationRow | null;
+  run: RunDetailRun;
+}) => {
+  if (row?.endedAt) {
+    return row.endedAt;
+  }
+
+  if (isLastIteration) {
+    if (run.endedAt) {
+      return run.endedAt;
+    }
+
+    return run.status === "running" ? null : (events.at(-1)?.timestamp ?? null);
+  }
+
+  return events.at(-1)?.timestamp ?? null;
+};
+
 export const groupEventsByTurn = (
   events: RunDetailEvent[],
 ): RunDetailTurn[] => {
@@ -239,10 +265,12 @@ export const buildRunDetailState = ({
       n,
       startedAt:
         row?.startedAt ?? iterationEvents[0]?.timestamp ?? run.startedAt,
-      endedAt:
-        row?.endedAt ??
-        iterationEvents.at(-1)?.timestamp ??
-        (n === lastIterationNumber ? run.endedAt : null),
+      endedAt: inferredIterationEnd({
+        events: iterationEvents,
+        isLastIteration: n === lastIterationNumber,
+        row,
+        run,
+      }),
       status: n === lastIterationNumber ? statusValue(run.status) : "failed",
       turnCount: turns.length,
       eventCount: iterationEvents.length,
