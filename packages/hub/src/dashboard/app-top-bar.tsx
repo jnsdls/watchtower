@@ -61,7 +61,6 @@ export function TopBar({ hubBadge }: { hubBadge: string }) {
 
       <button
         className="hidden h-[26px] min-w-[220px] items-center gap-2 rounded-md border border-border bg-card px-2 text-muted text-xs transition-colors hover:border-border-strong hover:bg-hover hover:text-fg md:inline-flex"
-        onClick={() => undefined}
         type="button"
       >
         <Search aria-hidden="true" className="size-3.5" />

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { TopBar } from "./app-top-bar";
 import { LiveUpdates } from "./live-updates";
 
-export { buildBreadcrumbs, buildHubBadge } from "./app-shell-data";
+export { buildHubBadge } from "./app-shell-data";
 
 export function AppShell({
   children,

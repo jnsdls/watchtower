@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentProps, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "../lib/utils";
 
 export type StatusPillStatus = "running" | "succeeded" | "failed" | "canceled";
@@ -97,11 +97,9 @@ export function LiveDuration({
   endedAt?: Date | string | null;
   className?: string;
 }) {
-  const initialSeconds = useMemo(
-    () => elapsedSeconds(startedAt, endedAt),
-    [startedAt, endedAt],
+  const [seconds, setSeconds] = useState(() =>
+    elapsedSeconds(startedAt, endedAt),
   );
-  const [seconds, setSeconds] = useState(initialSeconds);
 
   useEffect(() => {
     setSeconds(elapsedSeconds(startedAt, endedAt));
