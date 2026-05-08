@@ -1,4 +1,15 @@
-import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  isNull,
+  lt,
+  sql,
+} from "drizzle-orm";
+import { costForRun } from "../pricing/rates";
 import type { HubQueryDatabase } from "./client";
 import {
   commits,
@@ -163,36 +174,136 @@ export const listJobsForProjectSummary = async (
   db: HubQueryDatabase,
   projectId: string,
 ) => {
-  const jobRows = await db
-    .select()
+  const rows = await db
+    .select({
+      id: jobs.id,
+      projectId: jobs.projectId,
+      startedAt: jobs.startedAt,
+      endedAt: jobs.endedAt,
+      status: jobs.status,
+      processPid: jobs.processPid,
+      title: jobs.title,
+      template: jobs.template,
+      watchtowerVersion: jobs.watchtowerVersion,
+      runCount: sql<number>`count(distinct ${runs.id})::int`,
+      totalTokens: sql<
+        number | null
+      >`nullif(coalesce(sum(${iterations.inputTokens}), 0) + coalesce(sum(${iterations.outputTokens}), 0) + coalesce(sum(${iterations.cacheReadInputTokens}), 0) + coalesce(sum(${iterations.cacheCreationInputTokens}), 0), 0)::int`,
+      branch: sql<string | null>`max(${runs.branch})`,
+      agentProvider: sql<
+        string | null
+      >`coalesce(max(case when ${runs.agentProvider} = 'codex' then 'codex' else null end), min(${runs.agentProvider}))`,
+    })
     .from(jobs)
+    .leftJoin(runs, eq(runs.jobId, jobs.id))
+    .leftJoin(iterations, eq(iterations.runId, runs.id))
     .where(eq(jobs.projectId, projectId))
+    .groupBy(jobs.id)
     .orderBy(desc(jobs.startedAt));
-  const runRows = await db.select().from(runs);
-  const iterationRows = await db.select().from(iterations);
 
-  return jobRows.map((job) => {
-    const jobRuns = runRows.filter((run) => run.jobId === job.id);
-    const runIds = new Set(jobRuns.map((run) => run.id));
-    const tokenValues = iterationRows
-      .filter((iteration) => runIds.has(iteration.runId))
-      .flatMap((iteration) => [
-        iteration.inputTokens,
-        iteration.outputTokens,
-        iteration.cacheReadInputTokens,
-        iteration.cacheCreationInputTokens,
-      ])
-      .filter((value): value is number => value !== null);
+  return rows;
+};
 
-    return {
-      ...job,
-      runCount: jobRuns.length,
-      totalTokens:
-        tokenValues.length === 0
-          ? null
-          : tokenValues.reduce((sum, value) => sum + value, 0),
-    };
-  });
+export const getProjectDashboardMetrics = async (
+  db: HubQueryDatabase,
+  projectId: string,
+  now = new Date(),
+) => {
+  const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const since48h = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+  const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const [jobWindowRow] = await db
+    .select({
+      jobs24h: sql<number>`count(*) filter (where ${jobs.startedAt} >= ${since24h})::int`,
+      jobsPrevious24h: sql<number>`count(*) filter (where ${jobs.startedAt} >= ${since48h} and ${jobs.startedAt} < ${since24h})::int`,
+    })
+    .from(jobs)
+    .where(and(eq(jobs.projectId, projectId), gte(jobs.startedAt, since48h)));
+
+  const [activeRunRow] = await db
+    .select({
+      activeRuns: sql<number>`count(${runs.id})::int`,
+      activeRunJobs: sql<number>`count(distinct ${runs.jobId})::int`,
+    })
+    .from(jobs)
+    .leftJoin(runs, and(eq(runs.jobId, jobs.id), eq(runs.status, "running")))
+    .where(eq(jobs.projectId, projectId));
+
+  const [successRow] = await db
+    .select({
+      completedJobs: sql<number>`count(*) filter (where ${jobs.status} in ('succeeded', 'completed', 'failed', 'canceled'))::int`,
+      succeededJobs: sql<number>`count(*) filter (where ${jobs.status} in ('succeeded', 'completed'))::int`,
+    })
+    .from(jobs)
+    .where(and(eq(jobs.projectId, projectId), gte(jobs.startedAt, since30d)));
+
+  const tokenRows = await db
+    .select({
+      runId: runs.id,
+      agentProvider: runs.agentProvider,
+      agentModel: runs.agentModel,
+      inputTokens: sql<number | null>`sum(${iterations.inputTokens})::int`,
+      outputTokens: sql<number | null>`sum(${iterations.outputTokens})::int`,
+      cacheReadInputTokens: sql<
+        number | null
+      >`sum(${iterations.cacheReadInputTokens})::int`,
+      cacheCreationInputTokens: sql<
+        number | null
+      >`sum(${iterations.cacheCreationInputTokens})::int`,
+    })
+    .from(jobs)
+    .innerJoin(runs, eq(runs.jobId, jobs.id))
+    .leftJoin(iterations, eq(iterations.runId, runs.id))
+    .where(
+      and(
+        eq(jobs.projectId, projectId),
+        gte(runs.startedAt, since24h),
+        lt(runs.startedAt, now),
+      ),
+    )
+    .groupBy(runs.id);
+
+  const hasTokenData = (row: {
+    inputTokens: number | null;
+    outputTokens: number | null;
+    cacheReadInputTokens: number | null;
+    cacheCreationInputTokens: number | null;
+  }) =>
+    row.inputTokens !== null ||
+    row.outputTokens !== null ||
+    row.cacheReadInputTokens !== null ||
+    row.cacheCreationInputTokens !== null;
+  const tokens24h = tokenRows.reduce(
+    (sum, row) =>
+      sum +
+      (row.inputTokens ?? 0) +
+      (row.outputTokens ?? 0) +
+      (row.cacheReadInputTokens ?? 0) +
+      (row.cacheCreationInputTokens ?? 0),
+    0,
+  );
+  const costValues = tokenRows
+    .map((row) => costForRun(row, hasTokenData(row) ? [row] : []))
+    .filter((value): value is number => value !== null);
+  const completedJobs = successRow?.completedJobs ?? 0;
+  const succeededJobs = successRow?.succeededJobs ?? 0;
+
+  return {
+    jobs24h: jobWindowRow?.jobs24h ?? 0,
+    jobsPrevious24h: jobWindowRow?.jobsPrevious24h ?? 0,
+    activeRuns: activeRunRow?.activeRuns ?? 0,
+    activeRunJobs: activeRunRow?.activeRunJobs ?? 0,
+    tokens24h: tokens24h === 0 ? null : tokens24h,
+    cost24h:
+      costValues.length === 0
+        ? null
+        : costValues.reduce((sum, value) => sum + value, 0),
+    successRate30d:
+      completedJobs === 0
+        ? null
+        : Math.round((succeededJobs / completedJobs) * 100),
+  };
 };
 
 export const createTask = async (

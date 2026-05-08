@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  ChevronDown,
   ChevronRight,
   Clock,
   Clock3,
@@ -20,6 +21,7 @@ import { Button } from "../components/ui/button";
 import type {
   getJob,
   getProject,
+  getProjectDashboardMetrics,
   getRun,
   getTask,
   listEventsForRun,
@@ -32,12 +34,7 @@ import type {
 import { costForRun } from "../pricing/rates";
 import { CancelJobButton } from "./cancel-job-button";
 import { CancelRunButton } from "./cancel-run-button";
-import {
-  formatDateTime,
-  formatDuration,
-  formatRelativeTime,
-  formatTokens,
-} from "./format";
+import { formatDuration, formatRelativeTime, formatTokens } from "./format";
 import {
   LiveDuration,
   Mono,
@@ -58,6 +55,7 @@ type ProjectListItem = Awaited<
   ReturnType<typeof listProjectsByRecentActivity>
 >[number];
 type Project = NonNullable<Awaited<ReturnType<typeof getProject>>>;
+type ProjectMetrics = Awaited<ReturnType<typeof getProjectDashboardMetrics>>;
 type Job = NonNullable<Awaited<ReturnType<typeof getJob>>>;
 type Run = NonNullable<Awaited<ReturnType<typeof getRun>>>;
 type Task = NonNullable<Awaited<ReturnType<typeof getTask>>>;
@@ -68,24 +66,6 @@ type EventListItem = Awaited<ReturnType<typeof listEventsForRun>>[number];
 type IterationListItem = Awaited<
   ReturnType<typeof listIterationsForRun>
 >[number];
-
-const PageShell = ({
-  title,
-  eyebrow,
-  children,
-}: {
-  title: string;
-  eyebrow: string;
-  children: ReactNode;
-}) => (
-  <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
-    <header className="flex flex-col gap-2 border-border border-b pb-4">
-      <p className="font-medium text-muted text-sm">{eyebrow}</p>
-      <h1 className="font-semibold text-3xl text-fg">{title}</h1>
-    </header>
-    {children}
-  </main>
-);
 
 const EmptyState = ({ children }: { children: ReactNode }) => (
   <div className="rounded-md border border-border bg-card p-6 text-muted">
@@ -137,6 +117,26 @@ const Status = ({ value }: { value: string }) => {
 
 const formatJobTitle = (job: { id: string; title: string | null }) =>
   job.title ?? `Job j_${job.id.slice(0, 6)}`;
+
+const formatProjectMetricDelta = (current: number, previous: number) => {
+  const delta = current - previous;
+
+  if (delta > 0) {
+    return `↑ ${delta} vs prev day`;
+  }
+
+  if (delta < 0) {
+    return `↓ ${Math.abs(delta)} vs prev day`;
+  }
+
+  return "→ same";
+};
+
+const formatEstimatedCost = (cost: number | null) =>
+  cost === null ? "n/a" : `$${cost.toFixed(2)} est.`;
+
+const formatSuccessRate = (rate: number | null) =>
+  rate === null ? "n/a" : `${rate}%`;
 
 const maxDate = (...dates: (Date | null | undefined)[]) =>
   dates.reduce<Date | null>((latest, date) => {
@@ -721,12 +721,105 @@ const EmptyHubLinkCard = ({
 export function ProjectDetailPage({
   project,
   jobs,
+  metrics,
 }: {
   project: Project;
   jobs: JobSummary[];
+  metrics: ProjectMetrics;
 }) {
+  const projectUrl =
+    project.gitRemoteUrl ?? project.localPath ?? project.displayName;
+  const metricTiles = [
+    {
+      label: "Jobs (24h)",
+      value: metrics.jobs24h.toString(),
+      sub: formatProjectMetricDelta(metrics.jobs24h, metrics.jobsPrevious24h),
+    },
+    {
+      label: "Active runs",
+      value: metrics.activeRuns.toString(),
+      sub: `across ${metrics.activeRunJobs} jobs`,
+      running: metrics.activeRuns > 0,
+    },
+    {
+      label: "Tokens (24h)",
+      value: formatTokens(metrics.tokens24h),
+      sub: formatEstimatedCost(metrics.cost24h),
+    },
+    {
+      label: "Success rate",
+      value: formatSuccessRate(metrics.successRate30d),
+      sub: "30d rolling",
+    },
+  ];
+
   return (
-    <PageShell eyebrow="Project" title={project.displayName}>
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 py-4">
+      <header className="flex items-end gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="m-0 truncate font-semibold text-[22px] text-fg">
+            {project.displayName}
+          </h1>
+          <a
+            className="mt-1 inline-flex max-w-full items-center gap-1 text-muted text-xs hover:text-fg"
+            href={projectUrl}
+          >
+            <SquareArrowOutUpRight aria-hidden="true" className="size-3.5" />
+            <Mono className="truncate">{projectUrl}</Mono>
+          </a>
+          <p className="mt-1 text-[13px] text-muted">{project.displayName}</p>
+        </div>
+        <CopyLogsButton
+          label="Copy run command"
+          logs="watchtower run main.ts"
+        />
+      </header>
+
+      <section className="grid overflow-hidden rounded-md border border-border bg-card sm:grid-cols-2 lg:grid-cols-4">
+        {metricTiles.map((metric) => (
+          <div
+            className="border-border border-b p-3.5 last:border-b-0 sm:nth-[2n+1]:border-r sm:nth-last-[-n+2]:border-b-0 lg:border-r lg:border-b-0 lg:last:border-r-0"
+            key={metric.label}
+          >
+            <div className="flex items-center gap-1.5 font-medium text-[11px] text-muted uppercase tracking-[0.04em]">
+              {metric.label}
+              {metric.running ? (
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 rounded-full bg-st-running animate-wt-pulse"
+                />
+              ) : null}
+            </div>
+            <Num className="mt-1 block font-medium text-[22px] text-fg">
+              {metric.value}
+            </Num>
+            <Mono className="mt-1 block text-[11px] text-muted">
+              {metric.sub}
+            </Mono>
+          </div>
+        ))}
+      </section>
+
+      <div className="flex items-center border-border border-b">
+        <div className="-mb-px flex gap-0.5">
+          <div className="inline-flex h-[34px] items-center gap-2 border-fg border-b px-3.5 text-[13px] text-fg">
+            Jobs
+            <Mono className="text-[11px] text-muted">{jobs.length}</Mono>
+          </div>
+        </div>
+        <span className="flex-1" />
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <Button type="button" variant="ghost">
+            <Filter aria-hidden="true" className="size-3.5" />
+            Status: any
+          </Button>
+          <Button type="button" variant="ghost">
+            Last 24h
+            <ChevronDown aria-hidden="true" className="size-3.5" />
+          </Button>
+        </div>
+      </div>
+
       {jobs.length === 0 ? (
         <EmptyState>No Jobs have been captured for this Project.</EmptyState>
       ) : (
@@ -734,43 +827,76 @@ export function ProjectDetailPage({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-card-soft text-muted">
               <tr>
+                <th className="w-[90px] px-4 py-3 font-medium">Started</th>
                 <th className="px-4 py-3 font-medium">Job</th>
-                <th className="px-4 py-3 font-medium">Started</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Duration</th>
-                <th className="px-4 py-3 font-medium">Runs</th>
-                <th className="px-4 py-3 font-medium">Tokens</th>
-                <th className="w-12" />
+                <th className="w-[110px] px-4 py-3 font-medium">Status</th>
+                <th className="w-[90px] px-4 py-3 font-medium">Duration</th>
+                <th className="w-[60px] px-4 py-3 text-right font-medium">
+                  Runs
+                </th>
+                <th className="w-[80px] px-4 py-3 text-right font-medium">
+                  Tokens
+                </th>
+                <th className="w-[30px]" />
               </tr>
             </thead>
             <tbody>
               {jobs.map((job) => {
                 const title = formatJobTitle(job);
+                const branch = job.branch ?? "main";
 
                 return (
                   <tr
                     className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
                     key={job.id}
                   >
-                    <td className="px-4 py-3 font-medium text-fg">
+                    <td className="px-4 py-3">
                       <Link
                         aria-label={`Open ${title}`}
                         className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         href={`/jobs/${job.id}`}
                       />
-                      {title}
+                      <Mono className="text-[12px] text-muted">
+                        {formatRelativeTime(job.startedAt)}
+                      </Mono>
                     </td>
-                    <td className="px-4 py-3 text-fg">
-                      {formatDateTime(job.startedAt)}
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <span className="truncate text-fg">{title}</span>
+                        <div className="flex min-w-0 items-center gap-2.5 text-[11px] text-muted">
+                          <span className="inline-flex min-w-0 items-center gap-1">
+                            <GitBranch
+                              aria-hidden="true"
+                              className="size-3 shrink-0"
+                            />
+                            <Mono className="truncate">{branch}</Mono>
+                          </span>
+                          {job.agentProvider ? (
+                            <Mono
+                              className={
+                                job.agentProvider === "codex"
+                                  ? "text-pv-codex"
+                                  : job.agentProvider === "claudeCode"
+                                    ? "text-pv-claude"
+                                    : undefined
+                              }
+                            >
+                              {job.agentProvider}
+                            </Mono>
+                          ) : null}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <Status value={job.status} />
                     </td>
-                    <td className="px-4 py-3 text-fg">
+                    <td className="px-4 py-3">
                       {formatDuration(job.startedAt, job.endedAt)}
                     </td>
-                    <td className="px-4 py-3 text-fg">{job.runCount}</td>
-                    <td className="px-4 py-3 text-fg">
+                    <td className="px-4 py-3 text-right">
+                      <Num>{job.runCount}</Num>
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       {formatTokens(job.totalTokens)}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -786,7 +912,7 @@ export function ProjectDetailPage({
           </table>
         </div>
       )}
-    </PageShell>
+    </main>
   );
 }
 

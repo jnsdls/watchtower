@@ -17,6 +17,15 @@ const jobId = "00000000-0000-4000-8000-000000000002";
 const runId = "00000000-0000-4000-8000-000000000003";
 const startedAt = new Date("2026-05-02T20:00:00.000Z");
 const endedAt = new Date("2026-05-02T20:03:05.000Z");
+const projectMetrics: ComponentProps<typeof ProjectDetailPage>["metrics"] = {
+  jobs24h: 1,
+  jobsPrevious24h: 0,
+  activeRuns: 0,
+  activeRunJobs: 0,
+  tokens24h: 140,
+  cost24h: null,
+  successRate30d: 100,
+};
 
 describe("Dashboard pages", () => {
   it("renders Project, Job, Run, and Event rows", () => {
@@ -56,8 +65,11 @@ describe("Dashboard pages", () => {
           template: null,
           runCount: 1,
           totalTokens: 140,
+          branch: "sandcastle/issue-19-project-detail-rebuild",
+          agentProvider: "codex",
         },
       ],
+      metrics: projectMetrics,
     };
     const jobDetailProps: ComponentProps<typeof JobDetailPage> = {
       job: {
@@ -215,6 +227,72 @@ describe("Dashboard pages", () => {
     expect(markup).not.toContain("0 running");
     expect(markup).toContain('href="/projects/');
     expect(markup).toContain('aria-label="Open watchtower"');
+  });
+
+  it("renders rebuilt Project detail metrics and Jobs tab", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectDetailPage
+        project={{
+          id: projectId,
+          gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+          localPath: null,
+          displayName: "watchtower",
+          createdAt: startedAt,
+        }}
+        jobs={[
+          {
+            id: jobId,
+            projectId,
+            startedAt,
+            endedAt,
+            status: "succeeded",
+            processPid: null,
+            watchtowerVersion: null,
+            title: "fix: Project detail rebuild",
+            template: "plan-impl-review",
+            runCount: 3,
+            totalTokens: 412_341,
+            branch: "sandcastle/issue-19-project-detail-rebuild",
+            agentProvider: "codex",
+          },
+        ]}
+        metrics={{
+          jobs24h: 4,
+          jobsPrevious24h: 1,
+          activeRuns: 2,
+          activeRunJobs: 1,
+          tokens24h: 1_600_030,
+          cost24h: 8.275,
+          successRate30d: 75,
+        }}
+      />,
+    );
+
+    expect(markup).toContain("watchtower");
+    expect(markup).toContain("git@github.com:jnsdls/watchtower.git");
+    expect(markup).toContain("Copy run command");
+    expect(markup).toContain("Jobs (24h)");
+    expect(markup).toContain("↑ 3 vs prev day");
+    expect(markup).toContain("Active runs");
+    expect(markup).toContain("animate-wt-pulse");
+    expect(markup).toContain("across 1 jobs");
+    expect(markup).toContain("Tokens (24h)");
+    expect(markup).toContain("1.6M");
+    expect(markup).toContain("$8.28 est.");
+    expect(markup).toContain("Success rate");
+    expect(markup).toContain("75%");
+    expect(markup).toContain("Status: any");
+    expect(markup).toContain("Last 24h");
+    expect(markup).toContain("fix: Project detail rebuild");
+    expect(markup).toContain("sandcastle/issue-19-project-detail-rebuild");
+    expect(markup).toContain("text-pv-codex");
+    expect(markup).toContain("412k");
+    expect(markup).toContain(
+      'href="/jobs/00000000-0000-4000-8000-000000000002"',
+    );
+    expect(markup).not.toContain(">Template<");
+    expect(markup).not.toContain(">Templates<");
+    expect(markup).not.toContain(">Settings<");
   });
 
   it("renders planner-driven Job Gantt swimlanes by Task", () => {

@@ -53,7 +53,19 @@ export const formatDuration = (startedAt: Date, endedAt: Date | null) => {
   return `${minutes}m ${seconds}s`;
 };
 
-export const formatTokens = (totalTokens: number | null) =>
-  totalTokens === null
-    ? "n/a"
-    : new Intl.NumberFormat("en").format(totalTokens);
+export const formatTokens = (totalTokens: number | null) => {
+  if (totalTokens === null) {
+    return "n/a";
+  }
+
+  if (totalTokens >= 1_000_000) {
+    const millions = totalTokens / 1_000_000;
+    return `${Number.isInteger(millions) ? millions.toFixed(0) : millions.toFixed(1)}M`;
+  }
+
+  if (totalTokens >= 1_000) {
+    return `${Math.round(totalTokens / 1_000)}k`;
+  }
+
+  return new Intl.NumberFormat("en").format(totalTokens);
+};

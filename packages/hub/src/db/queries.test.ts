@@ -12,6 +12,7 @@ import {
   getIteration,
   getJob,
   getProject,
+  getProjectDashboardMetrics,
   getRun,
   getTask,
   listCommandPaletteSnapshot,
@@ -289,6 +290,114 @@ describe("Hub db queries", () => {
         runningCount: 1,
       },
     ]);
+  });
+
+  it("aggregates Project detail metrics with time windows and zero-success edge cases", async () => {
+    const now = new Date("2030-05-04T12:00:00.000Z");
+    const project = await createProject(db, {
+      gitRemoteUrl: "git@github.com:jnsdls/watchtower.git",
+      displayName: "watchtower",
+    });
+    const otherProject = await createProject(db, {
+      localPath: "/tmp/other",
+      displayName: "other",
+    });
+    const recentSucceededJob = await createJob(db, {
+      projectId: project.id,
+      startedAt: new Date("2030-05-04T11:00:00.000Z"),
+      endedAt: new Date("2030-05-04T11:10:00.000Z"),
+      status: "succeeded",
+    });
+    const recentRunningJob = await createJob(db, {
+      projectId: project.id,
+      startedAt: new Date("2030-05-03T13:00:00.000Z"),
+      status: "running",
+    });
+    await createJob(db, {
+      projectId: project.id,
+      startedAt: new Date("2030-05-02T13:00:00.000Z"),
+      endedAt: new Date("2030-05-02T13:05:00.000Z"),
+      status: "failed",
+    });
+    await createJob(db, {
+      projectId: project.id,
+      startedAt: new Date("2030-05-01T11:00:00.000Z"),
+      endedAt: new Date("2030-05-01T11:05:00.000Z"),
+      status: "canceled",
+    });
+    await createJob(db, {
+      projectId: otherProject.id,
+      startedAt: new Date("2030-05-04T11:30:00.000Z"),
+      status: "running",
+    });
+    const claudeRun = await createRun(db, {
+      jobId: recentSucceededJob.id,
+      name: "implementer",
+      agentProvider: "claudeCode",
+      agentModel: "claude-opus-4-6",
+      sandboxProvider: "docker",
+      startedAt: new Date("2030-05-04T11:00:00.000Z"),
+      endedAt: new Date("2030-05-04T11:10:00.000Z"),
+      status: "succeeded",
+      configSnapshot: {},
+    });
+    const codexRun = await createRun(db, {
+      jobId: recentRunningJob.id,
+      name: "reviewer",
+      agentProvider: "codex",
+      agentModel: "gpt-5.5",
+      sandboxProvider: "docker",
+      startedAt: new Date("2030-05-03T13:00:00.000Z"),
+      status: "running",
+      configSnapshot: {},
+    });
+    await createRun(db, {
+      jobId: recentRunningJob.id,
+      name: "merger",
+      agentProvider: "claudeCode",
+      agentModel: "claude-opus-4-6",
+      sandboxProvider: "docker",
+      startedAt: new Date("2030-05-03T14:00:00.000Z"),
+      status: "running",
+      configSnapshot: {},
+    });
+    await createIteration(db, {
+      runId: claudeRun.id,
+      n: 1,
+      startedAt: new Date("2030-05-04T11:00:00.000Z"),
+      endedAt: new Date("2030-05-04T11:10:00.000Z"),
+      inputTokens: 1_000_000,
+      outputTokens: 100_000,
+      cacheReadInputTokens: 500_000,
+      cacheCreationInputTokens: 100_000,
+    });
+    await createIteration(db, {
+      runId: codexRun.id,
+      n: 1,
+      startedAt: new Date("2030-05-03T13:00:00.000Z"),
+      inputTokens: 10,
+      outputTokens: 20,
+    });
+
+    await expect(
+      getProjectDashboardMetrics(db, project.id, now),
+    ).resolves.toMatchObject({
+      jobs24h: 2,
+      jobsPrevious24h: 1,
+      activeRuns: 2,
+      activeRunJobs: 1,
+      tokens24h: 1_700_030,
+      cost24h: 8.375,
+      successRate30d: 33,
+    });
+
+    await expect(
+      getProjectDashboardMetrics(db, otherProject.id, now),
+    ).resolves.toMatchObject({
+      jobs24h: 1,
+      activeRuns: 0,
+      successRate30d: null,
+    });
   });
 
   it("marks an active Run canceled and emits a status Event on cancel request", async () => {

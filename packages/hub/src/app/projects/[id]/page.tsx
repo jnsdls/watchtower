@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { ProjectDetailPage } from "../../../dashboard/pages";
-import { getProject, listJobsForProjectSummary } from "../../../db/queries";
+import {
+  getProject,
+  getProjectDashboardMetrics,
+  listJobsForProjectSummary,
+} from "../../../db/queries";
 import { getHubDatabase } from "../../../db/runtime";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +22,10 @@ export default async function ProjectPage({
     notFound();
   }
 
-  const jobs = await listJobsForProjectSummary(db, id);
+  const [jobs, metrics] = await Promise.all([
+    listJobsForProjectSummary(db, id),
+    getProjectDashboardMetrics(db, id),
+  ]);
 
-  return <ProjectDetailPage jobs={jobs} project={project} />;
+  return <ProjectDetailPage jobs={jobs} metrics={metrics} project={project} />;
 }
