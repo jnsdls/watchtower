@@ -287,8 +287,8 @@ describe("Dashboard pages", () => {
       />,
     );
 
-    expect(markup).toContain("Run timeline");
-    expect(markup).toContain("Swimlanes by Task");
+    expect(markup).toContain("Timeline");
+    expect(markup).toContain("Task lanes");
     expect(markup).toContain("Job-detail Gantt + swimlanes");
     expect(markup).toContain("implementer");
     expect(markup).toContain("reviewer");
@@ -298,6 +298,92 @@ describe("Dashboard pages", () => {
     expect(markup).toContain('aria-label="Open implementer Run"');
     expect(markup).toContain("bg-st-succeeded");
     expect(markup).toContain("bg-st-failed");
+  });
+
+  it("renders rebuilt Job header and task-lane Gantt with framework Runs", () => {
+    const taskId = "00000000-0000-4000-8000-000000000011";
+    const markup = renderToStaticMarkup(
+      <JobDetailPage
+        job={{
+          id: jobId,
+          projectId,
+          startedAt,
+          endedAt: null,
+          status: "running",
+          processPid: null,
+          watchtowerVersion: null,
+          title: "fix: Job detail rebuild",
+          template: null,
+        }}
+        runs={[
+          {
+            id: "00000000-0000-4000-8000-000000000041",
+            jobId,
+            taskId: null,
+            name: "planner",
+            agentProvider: "claudeCode",
+            agentModel: "claude-opus-4-6",
+            sandboxProvider: "docker",
+            branch: "main",
+            maxIterations: 1,
+            startedAt,
+            endedAt: new Date("2026-05-02T20:01:00.000Z"),
+            status: "succeeded",
+            cancelRequested: false,
+            completionSignal: null,
+            configSnapshot: {},
+            errorMessage: null,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000042",
+            jobId,
+            taskId,
+            name: "implementer",
+            agentProvider: "codex",
+            agentModel: "gpt-5.5",
+            sandboxProvider: "docker",
+            branch: "sandcastle/issue-20-job-detail-cancel-endpoint",
+            maxIterations: 2,
+            startedAt: new Date("2026-05-02T20:01:00.000Z"),
+            endedAt: null,
+            status: "running",
+            cancelRequested: false,
+            completionSignal: null,
+            configSnapshot: {},
+            errorMessage: null,
+          },
+        ]}
+        tasks={[
+          {
+            id: taskId,
+            jobId,
+            externalId: "20",
+            title: "Job detail rebuild + Job-level cancel endpoint",
+            branch: "sandcastle/issue-20-job-detail-cancel-endpoint",
+            status: "in_progress",
+            failureCount: 0,
+            createdAt: startedAt,
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("JOB · j_000000");
+    expect(markup).toContain("1 tasks · 2 runs");
+    expect(markup).toContain("fix: Job detail rebuild");
+    expect(markup).toContain("Started");
+    expect(markup).toContain("watchtower run main.ts");
+    expect(markup).toContain("Copy ID");
+    expect(markup).toContain("Compare");
+    expect(markup).toContain("Cancel job");
+    expect(markup).toContain("Task lanes");
+    expect(markup).toContain("Run name");
+    expect(markup).toContain("Flat");
+    expect(markup).toContain("planner");
+    expect(markup).toContain("Job detail rebuild + Job-level cancel endpoint");
+    expect(markup).toContain("wt-running-stripe");
+    expect(markup).toContain("bg-st-running");
+    expect(markup).toContain("border-l-st-running");
   });
 
   it("renders non-planner Job Gantt swimlanes by Run name", () => {
@@ -356,7 +442,7 @@ describe("Dashboard pages", () => {
       />,
     );
 
-    expect(markup).toContain("Swimlanes by Run name");
+    expect(markup).toContain("Run name");
     expect(markup).toContain("worker");
     expect(markup).toContain("reviewer");
     expect(markup).toContain(
@@ -497,5 +583,67 @@ describe("Dashboard pages", () => {
 
     expect(markup).toContain("Run total");
     expect(markup.match(/n\/a/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("renders Job Tasks and Runs cards side-by-side", () => {
+    const taskId = "00000000-0000-4000-8000-000000000011";
+    const markup = renderToStaticMarkup(
+      <JobDetailPage
+        job={{
+          id: jobId,
+          projectId,
+          startedAt,
+          endedAt: new Date("2026-05-02T20:04:00.000Z"),
+          status: "completed",
+          processPid: null,
+          watchtowerVersion: null,
+          title: null,
+          template: null,
+        }}
+        runs={[
+          {
+            id: runId,
+            jobId,
+            taskId,
+            name: "reviewer",
+            agentProvider: "claudeCode",
+            agentModel: "claude-opus-4-6",
+            sandboxProvider: "docker",
+            branch: "sandcastle/issue-20-job-detail-cancel-endpoint",
+            maxIterations: 3,
+            startedAt,
+            endedAt,
+            status: "failed",
+            cancelRequested: false,
+            completionSignal: null,
+            configSnapshot: {},
+            errorMessage: null,
+          },
+        ]}
+        tasks={[
+          {
+            id: taskId,
+            jobId,
+            externalId: "20",
+            title: "Job cards",
+            branch: "sandcastle/issue-20-job-detail-cancel-endpoint",
+            status: "failed",
+            failureCount: 1,
+            createdAt: startedAt,
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("grid gap-3 xl:grid-cols-2");
+    expect(markup).toContain(">#</th>");
+    expect(markup).toContain(">Title</th>");
+    expect(markup).toContain(">Branch</th>");
+    expect(markup).toContain(">Runs</th>");
+    expect(markup).toContain(">Name</th>");
+    expect(markup).toContain(">Task</th>");
+    expect(markup).toContain(">Iters</th>");
+    expect(markup).toContain(">Dur</th>");
+    expect(markup).not.toContain("Cancel job");
   });
 });

@@ -20,6 +20,7 @@ import {
   listProjectsByRecentActivity,
   listRuns,
   listRunsForJob,
+  requestJobCancel,
   requestRunCancel,
 } from "./queries";
 import { applyDatabaseMigrations } from "./setup";
@@ -366,6 +367,58 @@ describe("Hub db queries", () => {
         status: "succeeded",
       },
       event: null,
+    });
+  });
+
+  it("fans out Job cancellation to running Runs only", async () => {
+    const startedAt = new Date("2026-05-02T20:00:00.000Z");
+    const requestedAt = new Date("2026-05-02T20:02:00.000Z");
+    const project = await createProject(db, {
+      localPath: "/tmp/watchtower",
+      displayName: "watchtower",
+    });
+    const job = await createJob(db, {
+      projectId: project.id,
+      startedAt,
+      status: "running",
+    });
+    const runningRun = await createRun(db, {
+      jobId: job.id,
+      name: "implementer",
+      agentProvider: "codex",
+      sandboxProvider: "docker",
+      startedAt,
+      status: "running",
+      configSnapshot: {},
+    });
+    const completedRun = await createRun(db, {
+      jobId: job.id,
+      name: "reviewer",
+      agentProvider: "claudeCode",
+      sandboxProvider: "docker",
+      startedAt,
+      endedAt: new Date("2026-05-02T20:01:00.000Z"),
+      status: "succeeded",
+      configSnapshot: {},
+    });
+
+    await expect(
+      requestJobCancel(db, { jobId: job.id, requestedAt }),
+    ).resolves.toMatchObject({
+      status: "requested",
+      cancelledCount: 1,
+      runs: [{ id: runningRun.id, status: "canceled" }],
+      events: [
+        {
+          runId: runningRun.id,
+          type: "status",
+          payload: { status: "canceled", cancelRequested: true },
+        },
+      ],
+    });
+    await expect(getRun(db, completedRun.id)).resolves.toMatchObject({
+      status: "succeeded",
+      cancelRequested: false,
     });
   });
 });

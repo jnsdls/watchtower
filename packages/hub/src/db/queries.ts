@@ -367,6 +367,52 @@ export const requestRunCancel = async (
   };
 };
 
+export const requestJobCancel = async (
+  db: HubQueryDatabase,
+  input: { jobId: string; requestedAt: Date },
+) => {
+  const job = await getJob(db, input.jobId);
+
+  if (!job) {
+    return {
+      status: "missing" as const,
+      cancelledCount: 0,
+      runs: [],
+      events: [],
+    };
+  }
+
+  const runningRuns = await db
+    .select()
+    .from(runs)
+    .where(and(eq(runs.jobId, input.jobId), eq(runs.status, "running")))
+    .orderBy(runs.startedAt);
+  const requestedRuns = [];
+  const emittedEvents = [];
+
+  for (const run of runningRuns) {
+    const result = await requestRunCancel(db, {
+      id: run.id,
+      requestedAt: input.requestedAt,
+    });
+
+    if (result.status === "requested" && result.run) {
+      requestedRuns.push(result.run);
+    }
+
+    if (result.event) {
+      emittedEvents.push(result.event);
+    }
+  }
+
+  return {
+    status: "requested" as const,
+    cancelledCount: requestedRuns.length,
+    runs: requestedRuns,
+    events: emittedEvents,
+  };
+};
+
 export const listRuns = async (db: HubQueryDatabase) =>
   db.select().from(runs).orderBy(desc(runs.startedAt));
 

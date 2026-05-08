@@ -1,8 +1,11 @@
 import {
   ChevronRight,
+  Clock,
   Copy,
   FileText,
   Filter,
+  GitBranch,
+  GitCompareArrows,
   Layers,
   Terminal,
 } from "lucide-react";
@@ -20,6 +23,7 @@ import type {
   listRunsForJob,
   listTasksForJob,
 } from "../db/queries";
+import { CancelJobButton } from "./cancel-job-button";
 import { CancelRunButton } from "./cancel-run-button";
 import {
   formatDateTime,
@@ -27,7 +31,13 @@ import {
   formatRelativeTime,
   formatTokens,
 } from "./format";
-import { Mono, Num, StatusPill, type StatusPillStatus } from "./primitives";
+import {
+  LiveDuration,
+  Mono,
+  Num,
+  StatusPill,
+  type StatusPillStatus,
+} from "./primitives";
 
 type ProjectListItem = Awaited<
   ReturnType<typeof listProjectsByRecentActivity>
@@ -128,16 +138,29 @@ const maxDate = (...dates: (Date | null | undefined)[]) =>
 const statusBarClass = (status: string) => {
   switch (status) {
     case "running":
-      return "bg-st-running text-bg wt-running-stripe hover:bg-st-running";
+      return "border-st-running-bd bg-st-running-bg text-fg wt-running-stripe";
     case "succeeded":
     case "completed":
-      return "bg-st-succeeded text-bg hover:bg-st-succeeded";
+      return "border-st-succeeded-bd bg-st-succeeded-bg text-fg";
     case "failed":
-      return "bg-st-failed text-bg hover:bg-st-failed";
+      return "border-st-failed-bd bg-st-failed-bg text-fg";
     case "canceled":
-      return "bg-st-canceled text-bg hover:bg-st-canceled";
+      return "border-st-canceled-bd bg-st-canceled-bg text-fg";
     default:
-      return "bg-muted text-bg hover:bg-muted";
+      return "border-border bg-card-soft text-fg";
+  }
+};
+
+const statusBarFillClass = (status: string) => {
+  switch (status) {
+    case "running":
+      return "bg-st-running";
+    case "failed":
+      return "bg-st-failed";
+    case "canceled":
+      return "bg-st-canceled";
+    default:
+      return "bg-st-succeeded";
   }
 };
 
@@ -151,6 +174,8 @@ const fallbackTimelineEnd = (start: Date) => new Date(start.getTime() + 60_000);
 type GanttBar = RunListItem & {
   track: number;
 };
+
+type GanttMode = "task" | "runName" | "flat";
 
 type GanttLane = {
   id: string;
@@ -181,32 +206,74 @@ const buildGanttLanes = ({
   runs,
   tasks,
   timelineEnd,
+  mode,
 }: {
   runs: RunListItem[];
   tasks: TaskListItem[];
   timelineEnd: Date;
+  mode: GanttMode;
 }) => {
-  if (tasks.length > 0) {
+  if (mode === "flat") {
     return {
-      modeLabel: "Swimlanes by Task",
-      lanes: tasks.map<GanttLane>((task) => ({
-        id: task.id,
-        label: task.title,
-        detail: task.branch ?? task.externalId,
-        runs: assignTracks(
-          runs.filter((run) => run.taskId === task.id),
-          timelineEnd,
-        ),
-      })),
+      modeLabel: "Flat",
+      lanes: [
+        {
+          id: "flat",
+          label: "All Runs",
+          detail: null,
+          runs: assignTracks(runs, timelineEnd),
+        },
+      ],
     };
   }
 
-  const runNames = [...new Set(runs.map((run) => run.name))].sort(
-    (left, right) => left.localeCompare(right),
+  if (mode === "task" && tasks.length > 0) {
+    const tasksById = new Map(tasks.map((task) => [task.id, task]));
+    const taskLanes = tasks.map<GanttLane>((task) => ({
+      id: task.id,
+      label: task.title,
+      detail: task.branch ?? task.externalId,
+      runs: assignTracks(
+        runs.filter((run) => run.taskId === task.id),
+        timelineEnd,
+      ),
+    }));
+    const frameworkLanes = runs
+      .filter((run) => run.taskId === null || !tasksById.has(run.taskId))
+      .map<GanttLane>((run) => ({
+        id: run.id,
+        label: run.name,
+        detail: null,
+        runs: assignTracks([run], timelineEnd),
+      }));
+    const earliestStart = (lane: GanttLane) =>
+      lane.runs.length === 0
+        ? Number.POSITIVE_INFINITY
+        : Math.min(...lane.runs.map((run) => run.startedAt.getTime()));
+
+    return {
+      modeLabel: "Task lanes",
+      lanes: [...taskLanes, ...frameworkLanes].sort(
+        (left, right) => earliestStart(left) - earliestStart(right),
+      ),
+    };
+  }
+
+  const firstStartByName = new Map<string, number>();
+  for (const run of runs) {
+    const start = run.startedAt.getTime();
+    const previous = firstStartByName.get(run.name);
+    if (previous === undefined || start < previous) {
+      firstStartByName.set(run.name, start);
+    }
+  }
+  const runNames = [...firstStartByName.keys()].sort(
+    (left, right) =>
+      (firstStartByName.get(left) ?? 0) - (firstStartByName.get(right) ?? 0),
   );
 
   return {
-    modeLabel: "Swimlanes by Run name",
+    modeLabel: "Run name",
     lanes: runNames.map<GanttLane>((name) => ({
       id: name,
       label: name,
@@ -219,12 +286,46 @@ const buildGanttLanes = ({
   };
 };
 
+const formatTime = (date: Date) =>
+  new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "UTC",
+  }).format(date);
+
+const parseGanttMode = (
+  value: string | null | undefined,
+  tasks: TaskListItem[],
+): GanttMode => {
+  if (value === "runName" || value === "flat") {
+    return value;
+  }
+
+  return tasks.length > 0 ? "task" : "runName";
+};
+
+const taskLabelForRun = (
+  run: RunListItem,
+  tasksById: Map<string, TaskListItem>,
+) => {
+  if (!run.taskId) {
+    return "—";
+  }
+
+  const task = tasksById.get(run.taskId);
+  return task ? `#${task.externalId}` : "—";
+};
+
 const JobGantt = ({
   job,
+  mode,
   runs,
   tasks,
 }: {
   job: Job;
+  mode: GanttMode;
   runs: RunListItem[];
   tasks: TaskListItem[];
 }) => {
@@ -242,28 +343,67 @@ const JobGantt = ({
     runs,
     tasks,
     timelineEnd,
+    mode,
   });
+  const isLive = runs.some((run) => run.status === "running");
+  const ticks = Array.from({ length: 10 }, (_, index) => ({
+    label:
+      index === 9 && isLive
+        ? "now"
+        : formatTime(new Date(job.startedAt.getTime() + (spanMs / 9) * index)),
+    left: (index / 9) * 100,
+  }));
 
   return (
     <section className="overflow-hidden rounded-md border border-border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-border border-b px-4 py-3">
-        <div>
-          <h2 className="font-medium text-fg">Run timeline</h2>
-          <p className="text-muted text-sm">{modeLabel}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-border border-b px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <h2 className="font-medium text-[13px] text-fg">Timeline</h2>
+          <Mono className="text-[11px] text-muted">{modeLabel}</Mono>
         </div>
-        <div className="text-muted text-sm">
-          {formatDateTime(job.startedAt)} - {formatDateTime(timelineEnd)}
+        <div className="flex items-center gap-3">
+          <div className="inline-flex rounded-[5px] border border-border bg-card-soft p-0.5">
+            {(
+              [
+                ["task", "Task lanes"],
+                ["runName", "Run name"],
+                ["flat", "Flat"],
+              ] satisfies [GanttMode, string][]
+            ).map(([candidateMode, label]) => (
+              <Link
+                className={`rounded-[3px] px-2 py-0.5 text-[11px] ${
+                  candidateMode === mode
+                    ? "bg-hover text-fg"
+                    : "text-muted hover:text-fg"
+                }`}
+                href={`?gantt=${candidateMode}`}
+                key={candidateMode}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+          <Mono className="text-[11px] text-muted">
+            {isLive ? "now" : formatTime(timelineEnd)}
+          </Mono>
         </div>
       </div>
       <div className="overflow-x-auto">
         <div className="min-w-[760px]">
-          <div className="grid grid-cols-[13rem_minmax(32rem,1fr)] border-border border-b bg-card-soft text-muted text-xs">
-            <div className="px-4 py-3 font-medium">Swimlane</div>
-            <div className="relative px-4 py-3">
-              <div className="flex justify-between">
-                <span>{formatDateTime(job.startedAt)}</span>
-                <span>{formatDateTime(timelineEnd)}</span>
-              </div>
+          <div className="grid grid-cols-[13rem_minmax(32rem,1fr)] border-border border-b bg-bg-elev text-muted text-[10px] uppercase">
+            <div className="px-4 py-1.5 font-medium">Lane</div>
+            <div className="relative h-6">
+              {ticks.map((tick) => (
+                <Mono
+                  className={`absolute top-1.5 -translate-x-1/2 text-[10px] normal-case ${
+                    tick.label === "now" ? "text-st-running" : "text-muted"
+                  }`}
+                  key={`${tick.left}-${tick.label}`}
+                  style={{ left: `${tick.left}%` }}
+                >
+                  {tick.label}
+                </Mono>
+              ))}
             </div>
           </div>
           {lanes.map((lane) => {
@@ -278,18 +418,18 @@ const JobGantt = ({
                 className="grid grid-cols-[13rem_minmax(32rem,1fr)] border-border border-b last:border-b-0"
                 key={lane.id}
               >
-                <div className="flex min-h-20 flex-col justify-center px-4 py-3">
-                  <div className="break-words font-medium text-fg text-sm">
+                <div className="flex min-h-11 flex-col justify-center px-4 py-2">
+                  <Mono className="break-words font-medium text-fg text-xs">
                     {lane.label}
-                  </div>
+                  </Mono>
                   {lane.detail ? (
-                    <div className="mt-1 break-words text-muted text-xs">
+                    <Mono className="mt-1 break-words text-[11px] text-muted">
                       {lane.detail}
-                    </div>
+                    </Mono>
                   ) : null}
                 </div>
                 <div
-                  className="relative border-border border-l bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px)] bg-[length:25%_100%] px-4 py-3"
+                  className="relative border-border border-l bg-[repeating-linear-gradient(90deg,transparent_0_calc(11.111%-1px),var(--border)_calc(11.111%-1px)_11.111%)] px-4 py-3"
                   style={{ minHeight: laneHeight }}
                 >
                   {lane.runs.length === 0 ? (
@@ -314,7 +454,7 @@ const JobGantt = ({
                       return (
                         <Link
                           aria-label={`Open ${run.name} Run`}
-                          className={`absolute flex h-8 items-center overflow-hidden rounded-md px-3 font-medium text-xs shadow-sm transition-colors ${statusBarClass(
+                          className={`absolute flex h-6 items-center overflow-hidden rounded-[4px] border px-2 font-mono text-[11px] transition-colors ${statusBarClass(
                             run.status,
                           )}`}
                           href={`/runs/${run.id}`}
@@ -326,9 +466,24 @@ const JobGantt = ({
                           }}
                           title={`${run.name} - ${run.status}`}
                         >
+                          <span
+                            aria-hidden="true"
+                            className={`absolute inset-0 opacity-30 ${statusBarFillClass(
+                              run.status,
+                            )}`}
+                          />
                           <span className="truncate">
                             {run.name} · {run.status}
                           </span>
+                          {run.status === "running" ? (
+                            <span
+                              aria-hidden="true"
+                              className="absolute top-0 right-0 bottom-0 flex animate-wt-pulse items-center overflow-visible"
+                            >
+                              <span className="h-full w-0.5 bg-st-running" />
+                              <span className="h-0 w-0 border-y-[4px] border-y-transparent border-l-[6px] border-l-st-running" />
+                            </span>
+                          ) : null}
                         </Link>
                       );
                     })
@@ -620,15 +775,18 @@ export function ProjectDetailPage({
 }
 
 export function JobDetailPage({
+  ganttMode,
   job,
   runs,
   tasks,
 }: {
+  ganttMode?: string | null;
   job: Job;
   runs: RunListItem[];
   tasks: TaskListItem[];
 }) {
   const runsByTaskId = new Map<string, RunListItem[]>();
+  const tasksById = new Map(tasks.map((task) => [task.id, task]));
   for (const run of runs) {
     if (!run.taskId) {
       continue;
@@ -638,107 +796,178 @@ export function JobDetailPage({
     taskRuns.push(run);
     runsByTaskId.set(run.taskId, taskRuns);
   }
+  const displayBranch =
+    runs.find((run) => run.branch)?.branch ??
+    tasks.find((task) => task.branch)?.branch ??
+    "main";
+  const activeGanttMode = parseGanttMode(ganttMode, tasks);
 
   return (
-    <PageShell eyebrow="Job" title={formatJobTitle(job)}>
-      {runs.length > 0 ? (
-        <JobGantt job={job} runs={runs} tasks={tasks} />
-      ) : null}
-      {tasks.length > 0 ? (
-        <section className="overflow-hidden rounded-md border border-border bg-card">
-          <div className="border-border border-b px-4 py-3">
-            <h2 className="font-medium text-fg">Tasks</h2>
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 py-4">
+      <header className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2.5">
+            <Mono className="text-[11px] text-muted">
+              JOB · j_{job.id.slice(0, 6)}
+            </Mono>
+            <Status value={job.status} />
+            <Mono className="text-[11px] text-muted">
+              {tasks.length} tasks · {runs.length} runs
+            </Mono>
           </div>
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-card-soft text-muted">
-              <tr>
-                <th className="px-4 py-3 font-medium">Task</th>
-                <th className="px-4 py-3 font-medium">Branch</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Runs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task) => {
-                const taskRuns = runsByTaskId.get(task.id) ?? [];
-
-                return (
-                  <tr className="border-border border-t" key={task.id}>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-fg">{task.title}</div>
-                      <div className="text-muted">{task.externalId}</div>
-                    </td>
-                    <td className="px-4 py-3 text-fg">
-                      {task.branch ?? "n/a"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Status value={task.status} />
-                    </td>
-                    <td className="px-4 py-3 text-fg">
-                      {taskRuns.length === 0
-                        ? "n/a"
-                        : taskRuns.map((run) => run.name).join(", ")}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </section>
-      ) : null}
+          <h1 className="m-0 truncate font-semibold text-[20px] text-fg">
+            {formatJobTitle(job)}
+          </h1>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-muted text-xs">
+            <span className="inline-flex items-center gap-1">
+              <Clock aria-hidden="true" className="size-3.5" />
+              Started {formatTime(job.startedAt)} ·{" "}
+              {job.endedAt ? (
+                formatDuration(job.startedAt, job.endedAt)
+              ) : (
+                <>
+                  running <LiveDuration startedAt={job.startedAt} />
+                </>
+              )}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <GitBranch aria-hidden="true" className="size-3.5" />
+              {displayBranch}
+            </span>
+            <span aria-hidden="true">·</span>
+            <Mono>watchtower run main.ts</Mono>
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button size="sm" type="button" variant="ghost">
+            <Copy aria-hidden="true" className="size-4" />
+            Copy ID
+          </Button>
+          <Button size="sm" type="button" variant="ghost">
+            <GitCompareArrows aria-hidden="true" className="size-4" />
+            Compare
+          </Button>
+          {job.status === "running" ? <CancelJobButton jobId={job.id} /> : null}
+        </div>
+      </header>
       {runs.length === 0 ? (
         <EmptyState>No Runs have been captured for this Job.</EmptyState>
       ) : (
-        <div className="overflow-hidden rounded-md border border-border bg-card">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-card-soft text-muted">
-              <tr>
-                <th className="px-4 py-3 font-medium">Run</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Agent Provider</th>
-                <th className="px-4 py-3 font-medium">Sandbox Provider</th>
-                <th className="px-4 py-3 font-medium">Duration</th>
-                <th className="w-12" />
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr
-                  className="relative border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
-                  key={run.id}
-                >
-                  <td className="px-4 py-3 font-medium text-fg">
-                    <Link
-                      aria-label={`Open ${run.name} Run`}
-                      className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                      href={`/runs/${run.id}`}
-                    />
-                    {run.name}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Status value={run.status} />
-                  </td>
-                  <td className="px-4 py-3 text-fg">
-                    {run.agentProvider}
-                    {run.agentModel ? ` / ${run.agentModel}` : ""}
-                  </td>
-                  <td className="px-4 py-3 text-fg">{run.sandboxProvider}</td>
-                  <td className="px-4 py-3 text-fg">
-                    {formatDuration(run.startedAt, run.endedAt)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="ml-auto size-4 text-muted"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <JobGantt
+            job={job}
+            mode={activeGanttMode}
+            runs={runs}
+            tasks={tasks}
+          />
+          <div className="grid gap-3 xl:grid-cols-2">
+            <section className="overflow-hidden rounded-md border border-border bg-card">
+              <div className="flex items-center gap-2 border-border border-b px-4 py-2.5">
+                <h2 className="font-medium text-[13px] text-fg">Tasks</h2>
+                <Mono className="text-[11px] text-muted">
+                  {tasks.length} · from planner
+                </Mono>
+              </div>
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-card-soft text-muted text-[11px] uppercase">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">#</th>
+                    <th className="px-3 py-2 font-medium">Title</th>
+                    <th className="px-3 py-2 font-medium">Branch</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 text-right font-medium">Runs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((task, index) => (
+                    <tr
+                      className="h-[38px] border-border border-t"
+                      key={task.id}
+                    >
+                      <td className="px-3 py-2">
+                        <Mono className="text-muted">
+                          {String(index + 1).padStart(2, "0")}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2 font-medium text-fg">
+                        {task.title}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Mono className="text-[11px] text-muted">
+                          {task.branch ?? "—"}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Status value={task.status} />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Num>{runsByTaskId.get(task.id)?.length ?? 0}</Num>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+            <section className="overflow-hidden rounded-md border border-border bg-card">
+              <div className="flex items-center gap-2 border-border border-b px-4 py-2.5">
+                <h2 className="font-medium text-[13px] text-fg">Runs</h2>
+                <Mono className="text-[11px] text-muted">{runs.length}</Mono>
+              </div>
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-card-soft text-muted text-[11px] uppercase">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Name</th>
+                    <th className="px-3 py-2 font-medium">Task</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Iters</th>
+                    <th className="px-3 py-2 text-right font-medium">Dur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((run) => (
+                    <tr
+                      className="relative h-[38px] border-border border-t transition-colors hover:bg-hover focus-within:bg-hover"
+                      key={run.id}
+                    >
+                      <td className="px-3 py-2">
+                        <Link
+                          aria-label={`Open ${run.name} Run`}
+                          className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                          href={`/runs/${run.id}`}
+                        />
+                        <Mono className="inline-flex items-center gap-1.5 text-fg">
+                          <span
+                            aria-hidden="true"
+                            className="size-1.5 rounded-full bg-muted"
+                          />
+                          {run.name}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Mono className="text-[11px] text-muted">
+                          {taskLabelForRun(run, tasksById)}
+                        </Mono>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Status value={run.status} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Num>{run.maxIterations ?? "—"}</Num>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Mono>
+                          {formatDuration(run.startedAt, run.endedAt)}
+                        </Mono>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </div>
+        </>
       )}
-    </PageShell>
+    </main>
   );
 }
 
