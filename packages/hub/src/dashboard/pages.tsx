@@ -130,6 +130,19 @@ const statusBarClass = (status: string) => {
   }
 };
 
+const statusBarFillClass = (status: string) => {
+  switch (status) {
+    case "running":
+      return "bg-st-running";
+    case "failed":
+      return "bg-st-failed";
+    case "canceled":
+      return "bg-st-canceled";
+    default:
+      return "bg-st-succeeded";
+  }
+};
+
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
 
 const percentBetween = (date: Date, start: Date, spanMs: number) =>
@@ -148,7 +161,6 @@ type GanttLane = {
   label: string;
   detail: string | null;
   runs: GanttBar[];
-  kind: "framework" | "task" | "runName" | "flat";
 };
 
 const assignTracks = (runs: RunListItem[], timelineEnd: Date): GanttBar[] => {
@@ -188,12 +200,16 @@ const buildGanttLanes = ({
           id: "flat",
           label: "All Runs",
           detail: null,
-          kind: "flat" as const,
           runs: assignTracks(runs, timelineEnd),
         },
       ],
     };
   }
+
+  const earliestStart = (lane: GanttLane) =>
+    lane.runs.length === 0
+      ? Number.POSITIVE_INFINITY
+      : Math.min(...lane.runs.map((run) => run.startedAt.getTime()));
 
   if (mode === "task" && tasks.length > 0) {
     const tasksById = new Map(tasks.map((task) => [task.id, task]));
@@ -201,7 +217,6 @@ const buildGanttLanes = ({
       id: task.id,
       label: task.title,
       detail: task.branch ?? task.externalId,
-      kind: "task",
       runs: assignTracks(
         runs.filter((run) => run.taskId === task.id),
         timelineEnd,
@@ -213,37 +228,29 @@ const buildGanttLanes = ({
         id: run.id,
         label: run.name,
         detail: null,
-        kind: "framework",
         runs: assignTracks([run], timelineEnd),
       }));
 
     return {
       modeLabel: "Task lanes",
-      lanes: [...taskLanes, ...frameworkLanes].sort((left, right) => {
-        const leftStart = Math.min(
-          ...left.runs.map((run) => run.startedAt.getTime()),
-        );
-        const rightStart = Math.min(
-          ...right.runs.map((run) => run.startedAt.getTime()),
-        );
-        return leftStart - rightStart;
-      }),
+      lanes: [...taskLanes, ...frameworkLanes].sort(
+        (left, right) => earliestStart(left) - earliestStart(right),
+      ),
     };
   }
 
-  const runNames = [...new Set(runs.map((run) => run.name))].sort((a, b) => {
-    const firstA = Math.min(
-      ...runs
-        .filter((run) => run.name === a)
-        .map((run) => run.startedAt.getTime()),
-    );
-    const firstB = Math.min(
-      ...runs
-        .filter((run) => run.name === b)
-        .map((run) => run.startedAt.getTime()),
-    );
-    return firstA - firstB;
-  });
+  const firstStartByName = new Map<string, number>();
+  for (const run of runs) {
+    const start = run.startedAt.getTime();
+    const previous = firstStartByName.get(run.name);
+    if (previous === undefined || start < previous) {
+      firstStartByName.set(run.name, start);
+    }
+  }
+  const runNames = [...firstStartByName.keys()].sort(
+    (left, right) =>
+      (firstStartByName.get(left) ?? 0) - (firstStartByName.get(right) ?? 0),
+  );
 
   return {
     modeLabel: "Run name",
@@ -251,7 +258,6 @@ const buildGanttLanes = ({
       id: name,
       label: name,
       detail: null,
-      kind: "runName",
       runs: assignTracks(
         runs.filter((run) => run.name === name),
         timelineEnd,
@@ -273,10 +279,6 @@ const parseGanttMode = (
   value: string | null | undefined,
   tasks: TaskListItem[],
 ): GanttMode => {
-  if (value === "task" && tasks.length > 0) {
-    return "task";
-  }
-
   if (value === "runName" || value === "flat") {
     return value;
   }
@@ -323,9 +325,10 @@ const JobGantt = ({
     timelineEnd,
     mode,
   });
+  const isLive = runs.some((run) => run.status === "running");
   const ticks = Array.from({ length: 10 }, (_, index) => ({
     label:
-      index === 9 && runs.some((run) => run.status === "running")
+      index === 9 && isLive
         ? "now"
         : formatTime(new Date(job.startedAt.getTime() + (spanMs / 9) * index)),
     left: (index / 9) * 100,
@@ -359,9 +362,7 @@ const JobGantt = ({
             ))}
           </div>
           <Mono className="text-[11px] text-muted">
-            {runs.some((run) => run.status === "running")
-              ? "now"
-              : formatTime(timelineEnd)}
+            {isLive ? "now" : formatTime(timelineEnd)}
           </Mono>
         </div>
       </div>
@@ -445,15 +446,9 @@ const JobGantt = ({
                         >
                           <span
                             aria-hidden="true"
-                            className={`absolute inset-0 ${
-                              run.status === "running"
-                                ? "bg-st-running"
-                                : run.status === "failed"
-                                  ? "bg-st-failed"
-                                  : run.status === "canceled"
-                                    ? "bg-st-canceled"
-                                    : "bg-st-succeeded"
-                            } opacity-30`}
+                            className={`absolute inset-0 opacity-30 ${statusBarFillClass(
+                              run.status,
+                            )}`}
                           />
                           <span className="truncate">
                             {run.name} · {run.status}
