@@ -164,4 +164,46 @@ describe("Runner telemetry ingestion", () => {
       },
     ]);
   });
+
+  it("reconciles still-running Runs to failed when their Job completes without run.completed", async () => {
+    const orphanRunId = "00000000-0000-4000-8000-000000000011";
+
+    await ingestEventBatch(db, {
+      events: [
+        {
+          type: "run.started",
+          runId: orphanRunId,
+          jobId,
+          name: "implementer",
+          agentProvider: "codex",
+          sandboxProvider: "docker",
+          configSnapshot: {},
+          timestamp: "2026-05-02T20:01:00.000Z",
+        },
+        {
+          type: "job.completed",
+          jobId,
+          status: "succeeded",
+          timestamp: "2026-05-02T20:03:00.000Z",
+        },
+      ],
+    });
+
+    await expect(getRun(db, orphanRunId)).resolves.toMatchObject({
+      status: "failed",
+      endedAt: new Date("2026-05-02T20:03:00.000Z"),
+      errorMessage: "Job ended before Run reported completion",
+    });
+    // No succeeded Run inside, so the Job itself flips to failed.
+    await expect(getJob(db, jobId)).resolves.toMatchObject({
+      status: "failed",
+      endedAt: new Date("2026-05-02T20:03:00.000Z"),
+    });
+    await expect(listEventsForRun(db, orphanRunId)).resolves.toMatchObject([
+      {
+        type: "status",
+        payload: { status: "failed", reason: "job-ended" },
+      },
+    ]);
+  });
 });

@@ -1,3 +1,4 @@
+import { sweepStaleRuntimeJobs } from "../run-reconciliation";
 import { backfillOrphanRunLinkages } from "../task-status";
 import { createHubDatabase, type HubDatabase } from "./client";
 import { applyDatabaseMigrations } from "./setup";
@@ -21,6 +22,10 @@ export const getHubDatabase = async () => {
     // branch-fallback linkage rule existed (e.g. reviewer Runs missing
     // TASK_ID). Idempotent — no-op once everything is linked.
     await backfillOrphanRunLinkages(db);
+    // Recover Jobs whose Runner crashed without sending `job.completed`,
+    // and reconcile any historical orphan Runs left in `running` status
+    // under already-terminal Jobs.
+    await sweepStaleRuntimeJobs(db, { now: new Date() });
     return db;
   })();
 
