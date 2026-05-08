@@ -31,5 +31,8 @@
     "@types/node": "^25.6.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.14"
+  },
+  "patchedDependencies": {
+    "@ai-hero/sandcastle@0.5.7": "patches/@ai-hero%2Fsandcastle@0.5.7.patch"
   }
 }
