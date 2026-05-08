@@ -150,7 +150,8 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("Tasks");
     expect(markup).toContain("Planner extraction");
     expect(markup).toContain("sandcastle/issue-10-planner-extraction");
-    expect(markup).toContain("codex / gpt-5.5");
+    expect(markup).toContain("codex");
+    expect(markup).toContain("gpt-5.5");
     expect(markup).toContain("docker");
     expect(markup).toContain("running");
     expect(markup).toContain("Cancel");
@@ -452,11 +453,11 @@ describe("Dashboard pages", () => {
     expect(markup).toContain("bg-st-running");
   });
 
-  it("renders iteration boundaries and token usage on the Run detail page", () => {
+  it("renders the rebuilt multi-iteration Run detail page", () => {
     const run: ComponentProps<typeof RunDetailPage>["run"] = {
       id: runId,
       jobId,
-      taskId: null,
+      taskId: "00000000-0000-4000-8000-000000000011",
       name: "planner",
       agentProvider: "claudeCode",
       agentModel: "claude-opus-4-6",
@@ -476,6 +477,7 @@ describe("Dashboard pages", () => {
 
     const markup = renderToStaticMarkup(
       <RunDetailPage
+        activeIterationNumber={2}
         events={[
           {
             id: "00000000-0000-4000-8000-000000000008",
@@ -493,6 +495,15 @@ describe("Dashboard pages", () => {
             iterationId: secondIterationId,
             type: "toolCall",
             payload: { name: "Bash", formattedArgs: "bun run check" },
+            timestamp: endedAt,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000010",
+            sequenceNumber: 3,
+            runId,
+            iterationId: secondIterationId,
+            type: "text",
+            payload: { message: "repairing tests" },
             timestamp: endedAt,
           },
         ]}
@@ -524,22 +535,58 @@ describe("Dashboard pages", () => {
             sessionFilePath: null,
           },
         ]}
+        job={{
+          id: jobId,
+          projectId,
+          startedAt,
+          endedAt,
+          status: "completed",
+          processPid: null,
+          watchtowerVersion: null,
+          title: "fix: Dashboard Job title",
+          template: null,
+        }}
         run={run}
+        task={{
+          id: "00000000-0000-4000-8000-000000000011",
+          jobId,
+          externalId: "21",
+          title: "Run detail rebuild",
+          branch: "sandcastle/issue-21-run-detail-rebuild",
+          status: "in_progress",
+          failureCount: 0,
+          createdAt: startedAt,
+        }}
       />,
     );
 
-    expect(markup).toContain("Iteration 1/2");
-    expect(markup).toContain("Iteration 2/2");
-    expect(markup).toContain("Run total");
-    expect(markup).toContain("300");
-    expect(markup).toContain("75");
-    expect(markup).toContain("30");
-    expect(markup).toContain("15");
+    expect(markup).toContain("RUN · r_000000");
+    expect(markup).toContain("Run detail rebuild");
+    expect(markup).toContain("iteration 2 / 2");
+    expect(markup).toContain("· turn 2");
+    expect(markup).toContain("Started");
+    expect(markup).toContain("Copy logs");
+    expect(markup).toContain("Compare to last");
+    expect(markup).toContain("iteration 1");
+    expect(markup).toContain("iteration 2");
+    expect(markup).toContain('data-active="true"');
+    expect(markup).toContain("Event timeline");
+    expect(markup).toContain("Auto-scroll");
+    expect(markup).toContain("#01");
+    expect(markup).toContain("turn 1");
     expect(markup).toContain("Bash bun run check");
+    expect(markup).toContain("repairing tests");
+    expect(markup).toContain("Run metadata");
+    expect(markup).toContain("This iteration");
+    expect(markup).toContain("Tools used");
+    expect(markup).toContain("cost");
+    expect(markup).toContain("$0.00");
+    expect(markup).not.toContain("Token usage");
+    expect(markup).not.toContain("Run total");
     expect(markup).not.toContain("Cancel");
   });
 
-  it("renders n/a for Run token usage when iteration usage is unavailable", () => {
+  it("renders one-shot Run chrome and Codex cost fallback", () => {
     const run: ComponentProps<typeof RunDetailPage>["run"] = {
       id: runId,
       jobId,
@@ -577,12 +624,16 @@ describe("Dashboard pages", () => {
             sessionFilePath: null,
           },
         ]}
+        job={null}
         run={run}
+        task={null}
       />,
     );
 
-    expect(markup).toContain("Run total");
-    expect(markup.match(/n\/a/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(markup).toContain("iteration 1");
+    expect(markup).toContain("—");
+    expect(markup).not.toContain('href="?iter=');
+    expect(markup).not.toContain("Token usage");
   });
 
   it("renders Job Tasks and Runs cards side-by-side", () => {
