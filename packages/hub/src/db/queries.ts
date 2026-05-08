@@ -387,18 +387,15 @@ export const requestJobCancel = async (
       requestRunCancel(db, { id: run.id, requestedAt: input.requestedAt }),
     ),
   );
-  const requestedResults = results.filter(
-    (result) => result.status === "requested" && result.run,
+  const requested = results.filter(
+    (result): result is Extract<typeof result, { status: "requested" }> =>
+      result.status === "requested",
   );
 
   return {
-    canceledCount: requestedResults.length,
-    events: requestedResults
-      .map((result) => result.event)
-      .filter((event): event is NonNullable<typeof event> => event !== null),
-    runIds: requestedResults
-      .map((result) => result.run?.id)
-      .filter((id): id is string => id !== undefined),
+    canceledCount: requested.length,
+    events: requested.flatMap((result) => (result.event ? [result.event] : [])),
+    runIds: requested.map((result) => result.run.id),
     status: "requested" as const,
   };
 };

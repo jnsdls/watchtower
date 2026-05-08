@@ -75,6 +75,22 @@ export type CommandPaletteModel = {
 
 const MAX_GROUP_ITEMS = 10;
 
+const groupBy = <T, K>(items: readonly T[], keyOf: (item: T) => K) => {
+  const map = new Map<K, T[]>();
+
+  for (const item of items) {
+    const list = map.get(keyOf(item));
+
+    if (list) {
+      list.push(item);
+    } else {
+      map.set(keyOf(item), [item]);
+    }
+  }
+
+  return map;
+};
+
 const fallbackJobTitle = (job: CommandPaletteJob) =>
   job.title ?? `Job j_${job.id.slice(0, 6)}`;
 
@@ -84,37 +100,31 @@ const includesQuery = (value: string | null | undefined, query: string) =>
 const latestActivity = (startedAt: string, endedAt: string | null) =>
   new Date(endedAt ?? startedAt).getTime();
 
+const byLatestActivityDesc = (
+  left: { startedAt: string; endedAt: string | null },
+  right: { startedAt: string; endedAt: string | null },
+) =>
+  latestActivity(right.startedAt, right.endedAt) -
+  latestActivity(left.startedAt, left.endedAt);
+
 const formatElapsed = (
   startedAt: string,
   endedAt: string | null,
   now: Date,
 ) => {
-  if (!endedAt) {
-    const seconds = Math.max(
-      0,
-      Math.round((now.getTime() - new Date(startedAt).getTime()) / 1000),
-    );
-    const minutes = Math.floor(seconds / 60);
-    const remaining = seconds % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(
-      2,
-      "0",
-    )}`;
-  }
-
+  const end = endedAt ? new Date(endedAt) : now;
   const seconds = Math.max(
     0,
-    Math.round(
-      (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000,
-    ),
+    Math.round((end.getTime() - new Date(startedAt).getTime()) / 1000),
   );
   const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
 
-  if (minutes < 1) {
-    return `${seconds}s`;
+  if (!endedAt) {
+    return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
   }
 
-  return `${minutes}m ${seconds % 60}s`;
+  return minutes < 1 ? `${seconds}s` : `${minutes}m ${remaining}s`;
 };
 
 const pathnameJobId = (
@@ -167,14 +177,8 @@ export const buildCommandPaletteModel = (
   const jobsById = new Map(snapshot.jobs.map((job) => [job.id, job]));
   const runsById = new Map(snapshot.runs.map((run) => [run.id, run]));
   const tasksById = new Map(snapshot.tasks.map((task) => [task.id, task]));
-  const tasksByJobId = new Map<string, CommandPaletteTask[]>();
-
-  for (const task of snapshot.tasks) {
-    tasksByJobId.set(task.jobId, [
-      ...(tasksByJobId.get(task.jobId) ?? []),
-      task,
-    ]);
-  }
+  const tasksByJobId = groupBy(snapshot.tasks, (task) => task.jobId);
+  const runsByJobId = groupBy(snapshot.runs, (run) => run.jobId);
 
   const runMatches = snapshot.runs.filter((run) => {
     const job = jobsById.get(run.jobId);
@@ -190,11 +194,7 @@ export const buildCommandPaletteModel = (
   });
 
   const runItems = runMatches
-    .sort(
-      (left, right) =>
-        latestActivity(right.startedAt, right.endedAt) -
-        latestActivity(left.startedAt, left.endedAt),
-    )
+    .sort(byLatestActivityDesc)
     .slice(0, MAX_GROUP_ITEMS)
     .map<CommandPaletteItem>((run) => {
       const job = jobsById.get(run.jobId);
@@ -218,7 +218,7 @@ export const buildCommandPaletteModel = (
 
   const jobMatches = snapshot.jobs.filter((job) => {
     const jobTasks = tasksByJobId.get(job.id) ?? [];
-    const jobRuns = snapshot.runs.filter((run) => run.jobId === job.id);
+    const jobRuns = runsByJobId.get(job.id) ?? [];
 
     return [
       fallbackJobTitle(job),
@@ -228,11 +228,7 @@ export const buildCommandPaletteModel = (
   });
 
   const jobItems = jobMatches
-    .sort(
-      (left, right) =>
-        latestActivity(right.startedAt, right.endedAt) -
-        latestActivity(left.startedAt, left.endedAt),
-    )
+    .sort(byLatestActivityDesc)
     .slice(0, MAX_GROUP_ITEMS)
     .map<CommandPaletteItem>((job) => {
       const project = projectsById.get(job.projectId);
@@ -254,30 +250,35 @@ export const buildCommandPaletteModel = (
   const currentJobId = pathnameJobId(pathname, runsById);
   const currentJobHasRunningRun =
     !!currentJobId &&
-    snapshot.runs.some(
-      (run) => run.jobId === currentJobId && run.status === "running",
+    (runsByJobId.get(currentJobId) ?? []).some(
+      (run) => run.status === "running",
     );
-  const cancelMatches = includesQuery("Cancel running Job", normalizedQuery);
-  const actionItems =
-    currentJobId && currentJobHasRunningRun && cancelMatches
-      ? [
-          {
-            id: `cancel-${currentJobId}`,
-            action: "cancel-job" as const,
-            icon: "cancel" as const,
-            jobId: currentJobId,
-            shortcut: ["⌘", "."],
-            text: "Cancel running Job",
-          },
-        ]
-      : [];
+  const showCancelAction =
+    currentJobId &&
+    currentJobHasRunningRun &&
+    includesQuery("Cancel running Job", normalizedQuery);
+  const actionItems: CommandPaletteItem[] = showCancelAction
+    ? [
+        {
+          id: `cancel-${currentJobId}`,
+          action: "cancel-job",
+          icon: "cancel",
+          jobId: currentJobId,
+          shortcut: ["⌘", "."],
+          text: "Cancel running Job",
+        },
+      ]
+    : [];
 
-  const goItems = includesQuery("Projects", normalizedQuery)
+  const goItems: CommandPaletteItem[] = includesQuery(
+    "Projects",
+    normalizedQuery,
+  )
     ? [
         {
           id: "projects",
           href: "/",
-          icon: "folder" as const,
+          icon: "folder",
           shortcut: ["G", "P"],
           text: "Projects",
         },
