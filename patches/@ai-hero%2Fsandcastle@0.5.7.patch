@@ -1,0 +1,23 @@
+diff --git a/dist/AgentProvider.js b/dist/AgentProvider.js
+index 041f336d092bbae46b89979b24043fbb3be95294..ae73a8b6e449ec0ea4aa7726f87224717b0f33af 100644
+--- a/dist/AgentProvider.js
++++ b/dist/AgentProvider.js
+@@ -5,6 +5,18 @@ const TOOL_ARG_FIELDS = {
+     WebSearch: "query",
+     WebFetch: "url",
+     Agent: "description",
++    Task: "description",
++    Read: "file_path",
++    Edit: "file_path",
++    MultiEdit: "file_path",
++    Write: "file_path",
++    NotebookEdit: "notebook_path",
++    Glob: "pattern",
++    Grep: "pattern",
++    Skill: "skill",
++    ToolSearch: "query",
++    SlashCommand: "command",
++    ExitPlanMode: "plan",
+ };
+ /**
+  * Extract an error message from a parsed JSON error event.
