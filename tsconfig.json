@@ -22,5 +22,6 @@
     "packages/**/*.tsx",
     "tests/**/*.ts",
     ".sandcastle/**/*.ts"
-  ]
+  ],
+  "exclude": [".sandcastle/worktrees"]
 }
