@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 export type ConfigSnapshot = {
@@ -116,6 +116,17 @@ const readPromptFiles = async (options: Record<string, unknown>) => {
   return { raw, resolved };
 };
 
+const skippedConfigDirectories = new Set(["logs", "node_modules", "worktrees"]);
+const configFileExtensions = new Set([".cjs", ".js", ".md", ".mjs", ".ts"]);
+
+const isHiddenPathEntry = (name: string) => name.startsWith(".");
+
+const shouldHashConfigFile = (name: string) =>
+  name === "Dockerfile" || configFileExtensions.has(extname(name));
+
+const shouldWalkConfigDirectory = (name: string) =>
+  !isHiddenPathEntry(name) && !skippedConfigDirectories.has(name);
+
 const hashDirectory = async (directory: string): Promise<string | null> => {
   const hash = createHash("sha256");
 
@@ -133,11 +144,17 @@ const hashDirectory = async (directory: string): Promise<string | null> => {
       const path = join(current, entry.name);
 
       if (entry.isDirectory()) {
-        await walk(path);
+        if (shouldWalkConfigDirectory(entry.name)) {
+          await walk(path);
+        }
         continue;
       }
 
-      if (entry.isFile()) {
+      if (
+        entry.isFile() &&
+        !isHiddenPathEntry(entry.name) &&
+        shouldHashConfigFile(entry.name)
+      ) {
         hash.update(path);
         hash.update(await readFile(path));
       }
