@@ -119,13 +119,8 @@ const readPromptFiles = async (options: Record<string, unknown>) => {
 const skippedConfigDirectories = new Set(["logs", "node_modules", "worktrees"]);
 const configFileExtensions = new Set([".cjs", ".js", ".md", ".mjs", ".ts"]);
 
-const isHiddenPathEntry = (name: string) => name.startsWith(".");
-
-const shouldHashConfigFile = (name: string) =>
+const isHashableConfigFile = (name: string) =>
   name === "Dockerfile" || configFileExtensions.has(extname(name));
-
-const shouldWalkConfigDirectory = (name: string) =>
-  !isHiddenPathEntry(name) && !skippedConfigDirectories.has(name);
 
 const hashDirectory = async (directory: string): Promise<string | null> => {
   const hash = createHash("sha256");
@@ -141,20 +136,20 @@ const hashDirectory = async (directory: string): Promise<string | null> => {
     for (const entry of entries.sort((left, right) =>
       left.name.localeCompare(right.name),
     )) {
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
+
       const path = join(current, entry.name);
 
       if (entry.isDirectory()) {
-        if (shouldWalkConfigDirectory(entry.name)) {
+        if (!skippedConfigDirectories.has(entry.name)) {
           await walk(path);
         }
         continue;
       }
 
-      if (
-        entry.isFile() &&
-        !isHiddenPathEntry(entry.name) &&
-        shouldHashConfigFile(entry.name)
-      ) {
+      if (entry.isFile() && isHashableConfigFile(entry.name)) {
         hash.update(path);
         hash.update(await readFile(path));
       }
